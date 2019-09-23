@@ -1,0 +1,29 @@
+{
+    "env": {
+        "nrfSDK": "/home/henbro/Documents/nRF5x"
+    },
+
+    "configurations": [
+        {
+            "name": "template",
+            "includePath": [
+                "${workspaceFolder}/pca10056/blank/config",
+                "${nrfSDK}/**"
+            ],
+            "defines": [
+                "BOARD_PCA10056",
+                "CONFIG_GPIO_AS_PINRESET",
+                "FLOAT_ABI_HARD",
+                "NRF52840_XXAA",
+                "NRF_SD_BLE_API_VERSION=6",
+                "SOFTDEVICE_PRESENT",
+                "SWI_DISABLE0"
+            ],
+            "compilerPath": "/home/henbro/Tools/gcc-arm-none-eabi-8-2019-q3/bin/arm-none-eabi-gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}

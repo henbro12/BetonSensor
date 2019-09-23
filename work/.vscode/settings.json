@@ -1,0 +1,45 @@
+{
+    "files.associations": {
+        "nrf_delay.h": "c",
+        "stdint.h": "c",
+        "boards.h": "c",
+        "nrf_gpio.h": "c",
+        "nrfx.h": "c",
+        "nrfx_config.h": "c",
+        "app_error.h": "c",
+        "ble.h": "c",
+        "ble_err.h": "c",
+        "app_button.h": "c"
+    },
+    "actionButtons": {
+        "defaultColor": "black",
+        "loadNpmCommands":false,
+        "reloadButton":"⟳",
+        "commands": [
+            {
+                "name": "clean",
+                "color": "black",
+                "singleInstance": true,
+                "command": "cd pca10056/blank/armgcc && make clean"
+            },
+            {
+                "name": "make",
+                "color": "black",
+                "singleInstance": true,
+                "command": "cd pca10056/blank/armgcc && make"
+            },
+            {
+                "name": "flash",
+                "color": "black",
+                "singleInstance": true,
+                "command": "cd pca10056/blank/armgcc && make flash"
+            },
+            {
+                "name": "erase",
+                "color": "red",
+                "singleInstance": true,
+                "command": "cd pca10056/blank/armgcc && make erase"
+            }
+        ]
+    }
+}
