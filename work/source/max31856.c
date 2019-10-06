@@ -1,0 +1,209 @@
+
+#include "include/max31856.h"
+
+max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance)
+{
+    m_spi = spi_instance;
+    max31856_status status = MAX31856_SUCCESS;
+
+    status |= max31856_setRegisters(m_spi);
+    status |= max31856_checkRegisters(m_spi);
+
+    if (status == MAX31856_SUCCESS)
+    {
+        fault_status fault = max31856_checkFaultStatus();
+
+        uint8_t counter = 0;
+        while ((fault != APPROVED) && (counter < 5))
+        {
+            status = MAX31856_ERROR_STATUS;
+            if ((status = max31856_resetFaultStatus()) == MAX31856_SUCCESS) 
+            {
+                fault = max31856_checkFaultStatus();
+            }
+
+            nrf_delay_ms(200);
+            counter++;
+        }
+        
+        if ((status == MAX31856_SUCCESS) && (fault == APPROVED))
+        {
+            NRF_LOG_INFO("MAX31856 initialized\r\n");
+            return status;
+        }        
+    }
+    
+    NRF_LOG_ERROR("MAX31856 ERROR: Failed to initialize\r\n");
+    return status;
+}
+
+max31856_status max31856_setRegisters()
+{
+    // { Write Register, Value }
+    static uint8_t tx_buffer[][2] = 
+    { 
+        { WREGISTER_CR0,    CR0     },
+        { WREGISTER_CR1,    CR1     }, 
+        { WREGISTER_MASK,   MASK    },
+        { WREGISTER_CJHF,   CJHF    },
+        { WREGISTER_CJLF,   CJLF    },
+        { WREGISTER_LTHFTH, LTHFTH  },
+        { WREGISTER_LTHFTL, LTHFTL  },
+        { WREGISTER_LTLFTH, LTLFTH  },
+        { WREGISTER_LTLFTL, LTLFTL  },
+        { WREGISTER_CJTO,   CJTO    }
+    };
+
+    bool success = true;
+    for (int i = 0; i < (sizeof(tx_buffer) / sizeof(tx_buffer[0])); i++) 
+    {
+        static uint8_t rx_buffer[sizeof(tx_buffer[i])];
+        success &= spi_transfer(m_spi, tx_buffer[i], sizeof(tx_buffer[i]), rx_buffer, sizeof(rx_buffer));
+    }
+    
+    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+}
+
+max31856_status max31856_checkRegisters()
+{
+    // { Read Register, Expected Value }
+    static uint8_t tx_buffer[][2] = 
+    { 
+        { RREGISTER_CR0,    CR0     },
+        { RREGISTER_CR1,    CR1     }, 
+        { RREGISTER_MASK,   MASK    },
+        { RREGISTER_CJHF,   CJHF    },
+        { RREGISTER_CJLF,   CJLF    },
+        { RREGISTER_LTHFTH, LTHFTH  },
+        { RREGISTER_LTHFTL, LTHFTL  },
+        { RREGISTER_LTLFTH, LTLFTH  },
+        { RREGISTER_LTLFTL, LTLFTL  },
+        { RREGISTER_CJTO,   CJTO    }
+    };
+
+    bool success = true;
+    for (int i = 0; i < (sizeof(tx_buffer) / sizeof(tx_buffer[0])); i++) 
+    {
+        static uint8_t rx_buffer[sizeof(tx_buffer[i])];
+        success &= spi_transfer(m_spi, tx_buffer[i], sizeof(tx_buffer[i]) - 1, rx_buffer, sizeof(rx_buffer));
+
+        success &= (tx_buffer[i][1] == rx_buffer[1]);
+    }
+    
+    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+}
+
+fault_status max31856_checkFaultStatus()
+{
+    const uint8_t tx_buffer[] = { RREGISTER_SR };
+    static uint8_t rx_buffer[sizeof(tx_buffer) + 1];
+
+    bool success = spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer));
+
+    fault_status fault = APPROVED;
+    if (success && (rx_buffer[1] != 0x00))
+    {
+        for (int bit = 0; bit < CHAR_BIT; bit++)
+        {
+            uint8_t bit_value = rx_buffer[1] & (1 << bit);
+            if (bit_value > 0x00)
+            {
+                fault = bit;
+            }
+        }    
+    }
+    else if (!success)
+    {
+        fault = SPI;
+    }
+    
+    max31856_printFaultStatus(fault);
+    return fault;
+}
+
+
+max31856_status max31856_resetFaultStatus()
+{
+    const uint8_t fault_reset = CR0 || FAULTCLR;
+    const uint8_t tx_buffer[] = { WREGISTER_CR0, fault_reset };
+    static uint8_t rx_buffer[sizeof(tx_buffer)];
+
+    bool success = spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer));
+    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+}
+
+
+void max31856_printFaultStatus(fault_status fault)
+{
+    switch (fault)
+    {
+        case OPEN: NRF_LOG_INFO("STATUS:\t Thermocouple Open-Circuit Fault\n"); break;
+        case OVUV: NRF_LOG_INFO("STATUS:\t Overvoltage or Undervoltage Input Fault\n"); break;
+        case TCLOW: NRF_LOG_INFO("STATUS:\t Thermocouple Temperature Low Fault\n"); break;
+        case TCHIGH: NRF_LOG_INFO("STATUS:\t Thermocouple Temperature High Fault\n"); break;
+        case CJLOW: NRF_LOG_INFO("STATUS:\t Cold-Junction Low Fault\n"); break;
+        case CJHIGH: NRF_LOG_INFO("STATUS:\t Cold-Junction High Fault\n"); break;
+        case TCRANGE: NRF_LOG_INFO("STATUS:\t Thermocouple Out-of-RANGE\n"); break;
+        case CJRANGE: NRF_LOG_INFO("STATUS:\t Cold-Junction Out-of-RANGE\n"); break;
+        case APPROVED: NRF_LOG_INFO("STATUS:\t APPROVED\n"); break;
+        case UNKNOWN: NRF_LOG_INFO("STATUS:\t UNKNOWN\n"); break;
+        default: NRF_LOG_INFO("STATUS:\t FAULT not recognized\n"); break;
+    }
+}
+
+
+max31856_status max31856_startConversion()
+{
+    const uint8_t one_shot = CR0 || ONESHOT;
+    const uint8_t tx_buffer[] = { WREGISTER_CR0, one_shot };
+    static uint8_t rx_buffer[sizeof(tx_buffer)];
+
+    bool success = spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer));
+    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+}
+
+
+max31856_status max31856_getTemperature(float* temperature)
+{
+    max31856_status status = MAX31856_SUCCESS;
+    const uint8_t tx_buffer[] = { RREGISTER_LTCBH };
+    static uint8_t rx_buffer[sizeof(tx_buffer) + 3];
+
+    status = max31856_startConversion();
+    
+    if (status == MAX31856_SUCCESS)
+    {
+        // Wait until conversion is done or 500ms has ellapsed
+        uint8_t counter = 0;
+        while (nrf_gpio_pin_read(DRDY) && (counter < 50)) 
+        { 
+            nrf_delay_ms(10);
+            counter++; 
+        }
+
+        if (counter >= 50)
+        {
+            status = MAX31856_ERROR_DRDY;
+        }
+        else
+        {
+            if (spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer)))
+            {
+                uint32_t digital_temperature = rx_buffer[1] << 16 | rx_buffer[2] << 8 | rx_buffer[3];
+                digital_temperature = digital_temperature >> 5;
+                *temperature = digital_temperature * TC_RESOLUTION;
+                return status;
+            }
+            else
+            {
+                status = MAX31856_ERROR_SPI;
+            }
+        }
+    }
+
+    NRF_LOG_ERROR("Failed to read TC Temperature");
+    return status;
+}
+
+
+// TODO: Add interuptHandler for DRDY and FAULT pins

@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include "nrf_delay.h"
 #include "boards.h"
-#include "spi.h"
+#include "max31856.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -58,22 +58,42 @@ static void log_init(void)
  */
 int main(void)
 {
+    nrf_delay_ms(500);
+
     /* Configure board. */
     bsp_board_init(BSP_INIT_LEDS);
     reset_voltage_level();
     
     log_init();
-    spi_init(&spi);
+    NRF_LOG_INFO("\r\n\n\n\t*** CONCRETE SENSOR ***\r\n")
 
+    spi_init(&spi);
+    max31856_init(&spi);
+
+    nrf_gpio_cfg_input(DRDY, NRF_GPIO_PIN_PULLUP);
+
+    bsp_board_leds_off();
+    NRF_LOG_FLUSH();
+    
     while(true)
     {
-        bsp_board_led_invert(BSP_BOARD_LED_0);
-        bsp_board_led_invert(BSP_BOARD_LED_1);
-        bsp_board_led_invert(BSP_BOARD_LED_2);
-        bsp_board_led_invert(BSP_BOARD_LED_3);
-        nrf_delay_ms(200);
+        bsp_board_leds_off();
+        
+        float temperature = 0.0f;
+        max31856_status status = max31856_getTemperature(&temperature);
+        if(status == MAX31856_SUCCESS)
+        {
+            NRF_LOG_INFO("Temperature: " NRF_LOG_FLOAT_MARKER "\r\n", NRF_LOG_FLOAT(temperature));
+        }
+        
+        bsp_board_leds_on();
+
+
+        NRF_LOG_FLUSH();
+        nrf_delay_ms(1000);
     }
 }
+
 
 /**
  *@}
