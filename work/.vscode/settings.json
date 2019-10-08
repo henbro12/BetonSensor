@@ -9,28 +9,37 @@
         "app_error.h": "c",
         "ble.h": "c",
         "ble_err.h": "c",
-        "app_button.h": "c"
+        "app_button.h": "c",
+        "max31856.h": "c",
+        "nrf_log_ctrl.h": "c",
+        "spi.h": "c"
     },
     "actionButtons": {
-        "defaultColor": "black",
+        "defaultColor": "white",
         "loadNpmCommands":false,
         "reloadButton":"⟳",
         "commands": [
             {
                 "name": "clean",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make clean"
             },
             {
                 "name": "make",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make"
             },
             {
+                "name": "softdevice",
+                "color": "white",
+                "singleInstance": true,
+                "command": "cd pca10056/blank/armgcc && make flash_softdevice"
+            },
+            {
                 "name": "flash",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make flash"
             },
