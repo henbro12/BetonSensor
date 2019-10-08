@@ -24,8 +24,8 @@
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 
 /**
- * @brief Function for resetting the output voltage to 3V3.
- * Reset board afterwards for the new configuration to take effect.
+ * @brief Function for resetting the output voltage to 3V3,
+ * reset board afterwards for the new configuration to take effect
  */
 void reset_voltage_level()
 {
@@ -42,7 +42,7 @@ void reset_voltage_level()
 
 
 /**
- * @brief Function for initializing the nrf log module.
+ * @brief Function for initializing the nrf log module
  */
 static void log_init(void)
 {
@@ -54,7 +54,7 @@ static void log_init(void)
 
 
 /**
- * @brief Function for application main entry.
+ * @brief Function for application main entry
  */
 int main(void)
 {

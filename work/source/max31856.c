@@ -1,5 +1,74 @@
 
-#include "include/max31856.h"
+#include "max31856.h"
+#include "app_util_platform.h"
+#include "nrf_gpio.h"
+#include "nrf_delay.h"
+#include "boards.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
+
+/** Member to hold the SPI instance */
+const nrf_drv_spi_t *m_spi;
+
+
+max31856_status max31856_setRegisters()
+{
+    // { Write Register, Value }
+    static uint8_t tx_buffer[][2] = 
+    { 
+        { WREGISTER_CR0,    CR0     },
+        { WREGISTER_CR1,    CR1     }, 
+        { WREGISTER_MASK,   MASK    },
+        { WREGISTER_CJHF,   CJHF    },
+        { WREGISTER_CJLF,   CJLF    },
+        { WREGISTER_LTHFTH, LTHFTH  },
+        { WREGISTER_LTHFTL, LTHFTL  },
+        { WREGISTER_LTLFTH, LTLFTH  },
+        { WREGISTER_LTLFTL, LTLFTL  },
+        { WREGISTER_CJTO,   CJTO    }
+    };
+
+    bool success = true;
+    for (int i = 0; i < (sizeof(tx_buffer) / sizeof(tx_buffer[0])); i++) 
+    {
+        static uint8_t rx_buffer[sizeof(tx_buffer[i])];
+        success &= spi_transfer(m_spi, tx_buffer[i], sizeof(tx_buffer[i]), rx_buffer, sizeof(rx_buffer));
+    }
+    
+    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+}
+
+
+max31856_status max31856_checkRegisters()
+{
+    // { Read Register, Expected Value }
+    static uint8_t tx_buffer[][2] = 
+    { 
+        { RREGISTER_CR0,    CR0     },
+        { RREGISTER_CR1,    CR1     }, 
+        { RREGISTER_MASK,   MASK    },
+        { RREGISTER_CJHF,   CJHF    },
+        { RREGISTER_CJLF,   CJLF    },
+        { RREGISTER_LTHFTH, LTHFTH  },
+        { RREGISTER_LTHFTL, LTHFTL  },
+        { RREGISTER_LTLFTH, LTLFTH  },
+        { RREGISTER_LTLFTL, LTLFTL  },
+        { RREGISTER_CJTO,   CJTO    }
+    };
+
+    bool success = true;
+    for (int i = 0; i < (sizeof(tx_buffer) / sizeof(tx_buffer[0])); i++) 
+    {
+        static uint8_t rx_buffer[sizeof(tx_buffer[i])];
+        success &= spi_transfer(m_spi, tx_buffer[i], sizeof(tx_buffer[i]) - 1, rx_buffer, sizeof(rx_buffer));
+
+        success &= (tx_buffer[i][1] == rx_buffer[1]);
+    }
+    
+    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+}
+
 
 max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance)
 {
@@ -35,62 +104,6 @@ max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance)
     
     NRF_LOG_ERROR("MAX31856 ERROR: Failed to initialize\r\n");
     return status;
-}
-
-max31856_status max31856_setRegisters()
-{
-    // { Write Register, Value }
-    static uint8_t tx_buffer[][2] = 
-    { 
-        { WREGISTER_CR0,    CR0     },
-        { WREGISTER_CR1,    CR1     }, 
-        { WREGISTER_MASK,   MASK    },
-        { WREGISTER_CJHF,   CJHF    },
-        { WREGISTER_CJLF,   CJLF    },
-        { WREGISTER_LTHFTH, LTHFTH  },
-        { WREGISTER_LTHFTL, LTHFTL  },
-        { WREGISTER_LTLFTH, LTLFTH  },
-        { WREGISTER_LTLFTL, LTLFTL  },
-        { WREGISTER_CJTO,   CJTO    }
-    };
-
-    bool success = true;
-    for (int i = 0; i < (sizeof(tx_buffer) / sizeof(tx_buffer[0])); i++) 
-    {
-        static uint8_t rx_buffer[sizeof(tx_buffer[i])];
-        success &= spi_transfer(m_spi, tx_buffer[i], sizeof(tx_buffer[i]), rx_buffer, sizeof(rx_buffer));
-    }
-    
-    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
-}
-
-max31856_status max31856_checkRegisters()
-{
-    // { Read Register, Expected Value }
-    static uint8_t tx_buffer[][2] = 
-    { 
-        { RREGISTER_CR0,    CR0     },
-        { RREGISTER_CR1,    CR1     }, 
-        { RREGISTER_MASK,   MASK    },
-        { RREGISTER_CJHF,   CJHF    },
-        { RREGISTER_CJLF,   CJLF    },
-        { RREGISTER_LTHFTH, LTHFTH  },
-        { RREGISTER_LTHFTL, LTHFTL  },
-        { RREGISTER_LTLFTH, LTLFTH  },
-        { RREGISTER_LTLFTL, LTLFTL  },
-        { RREGISTER_CJTO,   CJTO    }
-    };
-
-    bool success = true;
-    for (int i = 0; i < (sizeof(tx_buffer) / sizeof(tx_buffer[0])); i++) 
-    {
-        static uint8_t rx_buffer[sizeof(tx_buffer[i])];
-        success &= spi_transfer(m_spi, tx_buffer[i], sizeof(tx_buffer[i]) - 1, rx_buffer, sizeof(rx_buffer));
-
-        success &= (tx_buffer[i][1] == rx_buffer[1]);
-    }
-    
-    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
 }
 
 fault_status max31856_checkFaultStatus()

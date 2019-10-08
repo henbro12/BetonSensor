@@ -11,7 +11,8 @@
         "ble_err.h": "c",
         "app_button.h": "c",
         "max31856.h": "c",
-        "nrf_log_ctrl.h": "c"
+        "nrf_log_ctrl.h": "c",
+        "spi.h": "c"
     },
     "actionButtons": {
         "defaultColor": "black",

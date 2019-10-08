@@ -1,13 +1,17 @@
 
 #include "spi.h"
+#include "app_util_platform.h"
+#include "nrf_gpio.h"
+#include "nrf_delay.h"
+#include "boards.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
+
+static uint8_t*         p_buffer;
+static volatile bool    spi_xfer_done;
 
 
-static uint8_t* p_buffer;
-
-/**
- * @brief SPI user event handler.
- * @param event
- */
 void spi_event_handler(nrf_drv_spi_evt_t const* p_event,
                                          void*  p_context)
 {

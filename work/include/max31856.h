@@ -3,19 +3,9 @@
 #define _MAX31856_H__
 
 #include "spi.h"
-#include "app_util_platform.h"
-#include "nrf_gpio.h"
-#include "nrf_delay.h"
-#include "boards.h"
-#include "app_error.h"
-#include <string.h>
-#include "nrf_log.h"
-#include "nrf_log_ctrl.h"
-#include "nrf_log_default_backends.h"
 
-/**
- * @brief MAX31856 Read Registers.
- */
+
+/** MAX31856 Read Registers */
 #define RREGISTER_CR0        0x00   ///< Configuration Register 0 
 #define RREGISTER_CR1        0x01   ///< Configuration Register 1
 #define RREGISTER_MASK       0x02   ///< Fault Mask Register
@@ -33,9 +23,7 @@
 #define RREGISTER_LTCBL      0x0E   ///< Linearized TC Temperature, Byte 0
 #define RREGISTER_SR         0x0F   ///< Fault Status Register
 
-/**
- * @brief MAX31856 Write Registers.
- */
+/** MAX31856 Write Registers */
 #define WREGISTER_CR0        0x80   ///< Configuration Register 0
 #define WREGISTER_CR1        0x81   ///< Configuration Register 1
 #define WREGISTER_MASK       0x82   ///< Fault Mask Register
@@ -49,9 +37,7 @@
 #define WREGISTER_CJTH       0x0A   ///< Cold-Junction Temperature Register, MSB
 #define WREGISTER_CJTL       0x0B   ///< Cold-Junction Temperature Register, LSB
 
-/**
- * @brief MAX31856 Register Values.
- */
+/** MAX31856 Register Values */
 #define CR0         0x15    ///< Enable open-circuit detection - 50Hz
 #define CR1         0x22    ///< 4 samples averaged - TC Type J
 #define MASK        0xFC    ///< FAULT output only asserting on under-overvoltage and open-circuit
@@ -63,18 +49,24 @@
 #define LTLFTL      0x00    ///< DEFAULT
 #define CJTO        0x00    ///< DEFAULT
 
+/** Specific bits in a register */
 #define FAULTCLR    0x02    ///< Fault Status Clear Bit
 #define ONESHOT     0x64    ///< One-Shot Conversion Bit
 
+/** Pin numbers */
 #define DRDY        0x29    ///< DRDY Pin number
+#define FAULT       0x27    ///< FAULT Pin number
 
+/** Specific Thermocouple details */
 #define TC_RESOLUTION   0.0078125f  ///< Termocouple Temperature Resolution
 
+/** Extra defines */
 #define CHAR_BIT    __CHAR_BIT__    ///< Returns number of bits in a char
 
 
-const nrf_drv_spi_t *m_spi;
-
+/** 
+ * @brief Typedef Enum for defining the MAX31856 status
+ */
 typedef enum
 {
     MAX31856_SUCCESS,           ///< Successful command
@@ -85,6 +77,9 @@ typedef enum
     MAX31856_ERROR_UNKNOWN      ///< UNKNOWN status
 } max31856_status;
 
+/** 
+ * @brief Typedef Enum for defining the MAX31856 FAULT status
+ */
 typedef enum
 {
     OPEN,           ///< Thermocouple Open-Circuit Fault
@@ -101,16 +96,54 @@ typedef enum
 } fault_status;
 
 
+/** 
+ * @brief Function for initializing the MAX31856
+ * 
+ * @param[in] spi_instance          Instance of the spi interface to use
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance);
 
-max31856_status max31856_setRegisters();
-max31856_status max31856_checkRegisters();
 
-max31856_status max31856_resetFaultStatus();
+/** 
+ * @brief Function to check the FAULT status registers
+ * 
+ * @param[out] fault_status         Error code to determine the FAULT if any
+ */
 fault_status max31856_checkFaultStatus();
+
+
+/** 
+ * @brief Function to reset the FAULT status registers
+ * 
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
+max31856_status max31856_resetFaultStatus();
+
+
+/** 
+ * @brief Function to print the FAULT error code
+ * 
+ * @param[in] fault                 Fault status to be printed
+ */
 void max31856_printFaultStatus(fault_status fault);
 
+
+/** 
+ * @brief Function to start a conversion and determine the themocouple temperature
+ * 
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_startConversion();
+
+
+/** 
+ * @brief Function to read the thermocouple temperature registers and convert it to degree celcius
+ * 
+ * @param[in] temperature           Pointer to a temperature instance for reading the thermocouple value
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_getTemperature(float* temperature);
+
 
 #endif // _MAX31856_H__
