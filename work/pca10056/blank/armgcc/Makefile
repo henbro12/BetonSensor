@@ -84,6 +84,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/softdevice/common/nrf_sdh_ble.c \
   $(SDK_ROOT)/components/softdevice/common/nrf_sdh_soc.c \
   $(PROJ_DIR)/main.c \
+  $(PROJ_DIR)/source/timer.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -217,6 +218,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/stack_guard \
   $(SDK_ROOT)/components/libraries/log/src \
   $(PROJ_DIR)/ \
+  $(PROJ_DIR)/include \
   
 # Libraries common to all targets
 LIB_FILES += \
