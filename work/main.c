@@ -70,27 +70,32 @@ int main(void)
     spi_init(&spi);
     max31856_init(&spi);
 
-    nrf_gpio_cfg_input(DRDY, NRF_GPIO_PIN_PULLUP);
+    //nrf_gpio_cfg_input(DRDY, NRF_GPIO_PIN_PULLUP);
 
-    bsp_board_leds_off();
+    bsp_board_leds_on();
     NRF_LOG_FLUSH();
     
     while(true)
     {
-        bsp_board_leds_off();
-        
-        float temperature = 0.0f;
-        max31856_status status = max31856_getTemperature(&temperature);
-        if(status == MAX31856_SUCCESS)
+        max31856_checkFaultStatus();
+
+        float coldJunctionTemperature = 0.0f;
+        if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
         {
-            NRF_LOG_INFO("Temperature: " NRF_LOG_FLOAT_MARKER "\r\n", NRF_LOG_FLOAT(temperature));
+            NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
         }
         
-        bsp_board_leds_on();
-
+        float thermocoupleTemperature = 0.0f;
+        if (max31856_getThermoCoupleTemperature(&thermocoupleTemperature) == MAX31856_SUCCESS)
+        {
+            NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
+        }
 
         NRF_LOG_FLUSH();
-        nrf_delay_ms(1000);
+        nrf_delay_ms(5000);
+        bsp_board_leds_off();
+        nrf_delay_ms(500);
+        bsp_board_leds_on();
     }
 }
 

@@ -78,31 +78,13 @@ max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance)
     status |= max31856_setRegisters(m_spi);
     status |= max31856_checkRegisters(m_spi);
 
-    if (status == MAX31856_SUCCESS)
+    if (status != MAX31856_SUCCESS)
     {
-        fault_status fault = max31856_checkFaultStatus();
-
-        uint8_t counter = 0;
-        while ((fault != APPROVED) && (counter < 5))
-        {
-            status = MAX31856_ERROR_STATUS;
-            if ((status = max31856_resetFaultStatus()) == MAX31856_SUCCESS) 
-            {
-                fault = max31856_checkFaultStatus();
-            }
-
-            nrf_delay_ms(200);
-            counter++;
-        }
-        
-        if ((status == MAX31856_SUCCESS) && (fault == APPROVED))
-        {
-            NRF_LOG_INFO("MAX31856 initialized\r\n");
-            return status;
-        }        
+        NRF_LOG_ERROR("MAX31856 ERROR: Failed to initialize\r\n");
+        return status;
     }
-    
-    NRF_LOG_ERROR("MAX31856 ERROR: Failed to initialize\r\n");
+
+    NRF_LOG_INFO("MAX31856 initialized\r\n");
     return status;
 }
 
@@ -122,6 +104,7 @@ fault_status max31856_checkFaultStatus()
             if (bit_value > 0x00)
             {
                 fault = bit;
+                max31856_printFaultStatus(fault);
             }
         }    
     }
@@ -130,14 +113,13 @@ fault_status max31856_checkFaultStatus()
         fault = SPI;
     }
     
-    max31856_printFaultStatus(fault);
     return fault;
 }
 
 
 max31856_status max31856_resetFaultStatus()
 {
-    const uint8_t fault_reset = CR0 || FAULTCLR;
+    const uint8_t fault_reset = CR0 | CR0_FAULTCLR;
     const uint8_t tx_buffer[] = { WREGISTER_CR0, fault_reset };
     static uint8_t rx_buffer[sizeof(tx_buffer)];
 
@@ -150,71 +132,89 @@ void max31856_printFaultStatus(fault_status fault)
 {
     switch (fault)
     {
-        case OPEN: NRF_LOG_INFO("STATUS:\t Thermocouple Open-Circuit Fault\n"); break;
-        case OVUV: NRF_LOG_INFO("STATUS:\t Overvoltage or Undervoltage Input Fault\n"); break;
-        case TCLOW: NRF_LOG_INFO("STATUS:\t Thermocouple Temperature Low Fault\n"); break;
-        case TCHIGH: NRF_LOG_INFO("STATUS:\t Thermocouple Temperature High Fault\n"); break;
-        case CJLOW: NRF_LOG_INFO("STATUS:\t Cold-Junction Low Fault\n"); break;
-        case CJHIGH: NRF_LOG_INFO("STATUS:\t Cold-Junction High Fault\n"); break;
-        case TCRANGE: NRF_LOG_INFO("STATUS:\t Thermocouple Out-of-RANGE\n"); break;
-        case CJRANGE: NRF_LOG_INFO("STATUS:\t Cold-Junction Out-of-RANGE\n"); break;
-        case APPROVED: NRF_LOG_INFO("STATUS:\t APPROVED\n"); break;
-        case UNKNOWN: NRF_LOG_INFO("STATUS:\t UNKNOWN\n"); break;
-        default: NRF_LOG_INFO("STATUS:\t FAULT not recognized\n"); break;
+        case OPEN: NRF_LOG_ERROR("STATUS:\t Thermocouple Open-Circuit Fault"); break;
+        case OVUV: NRF_LOG_ERROR("STATUS:\t Overvoltage or Undervoltage Input Fault"); break;
+        case TCLOW: NRF_LOG_ERROR("STATUS:\t Thermocouple Temperature Low Fault"); break;
+        case TCHIGH: NRF_LOG_ERROR("STATUS:\t Thermocouple Temperature High Fault"); break;
+        case CJLOW: NRF_LOG_ERROR("STATUS:\t Cold-Junction Low Fault"); break;
+        case CJHIGH: NRF_LOG_ERROR("STATUS:\t Cold-Junction High Fault"); break;
+        case TCRANGE: NRF_LOG_ERROR("STATUS:\t Thermocouple Out-of-RANGE"); break;
+        case CJRANGE: NRF_LOG_ERROR("STATUS:\t Cold-Junction Out-of-RANGE"); break;
+        case UNKNOWN: NRF_LOG_ERROR("STATUS:\t UNKNOWN"); break;
+        case APPROVED: NRF_LOG_INFO("STATUS:\t APPROVED"); break;
+        default: NRF_LOG_ERROR("STATUS:\t FAULT not recognized"); break;
     }
 }
 
+max31856_status max31856_waitForDRDY() 
+{
+    uint8_t counter = 0;
+    while (nrf_gpio_pin_read(DRDY) && counter < 50) 
+    {
+        nrf_delay_ms(10);
+        counter++; 
+    }
+
+    return (counter >= 50) ? MAX31856_ERROR_DRDY : MAX31856_SUCCESS;
+}
 
 max31856_status max31856_startConversion()
 {
-    const uint8_t one_shot = CR0 || ONESHOT;
-    const uint8_t tx_buffer[] = { WREGISTER_CR0, one_shot };
+    const uint8_t oneShot = CR0 | CR0_ONESHOT;
+    const uint8_t tx_buffer[] = { WREGISTER_CR0, oneShot };
     static uint8_t rx_buffer[sizeof(tx_buffer)];
-
+    
     bool success = spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer));
-    return success ? MAX31856_SUCCESS : MAX31856_ERROR_SPI;
+    return success ? max31856_waitForDRDY() : MAX31856_ERROR_SPI;
 }
 
-
-max31856_status max31856_getTemperature(float* temperature)
+max31856_status max31856_getColdJunctionTemperature(float* temperature)
 {
-    max31856_status status = MAX31856_SUCCESS;
-    const uint8_t tx_buffer[] = { RREGISTER_LTCBH };
-    static uint8_t rx_buffer[sizeof(tx_buffer) + 3];
+    const uint8_t tx_buffer[] = { RREGISTER_CJTH };
+    static uint8_t rx_buffer[sizeof(tx_buffer) + 2];
 
-    status = max31856_startConversion();
-    
+    max31856_status status = max31856_startConversion();
     if (status == MAX31856_SUCCESS)
     {
-        // Wait until conversion is done or 500ms has ellapsed
-        uint8_t counter = 0;
-        while (nrf_gpio_pin_read(DRDY) && (counter < 50)) 
-        { 
-            nrf_delay_ms(10);
-            counter++; 
-        }
-
-        if (counter >= 50)
+        if (spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer)))
         {
-            status = MAX31856_ERROR_DRDY;
+            uint16_t digitalTemperature = rx_buffer[1] << 8 | rx_buffer[2];
+            *temperature = (digitalTemperature >> 2) * CJ_RESOLUTION;
+            return status;
         }
         else
         {
-            if (spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer)))
-            {
-                uint32_t digital_temperature = rx_buffer[1] << 16 | rx_buffer[2] << 8 | rx_buffer[3];
-                digital_temperature = digital_temperature >> 5;
-                *temperature = digital_temperature * TC_RESOLUTION;
-                return status;
-            }
-            else
-            {
-                status = MAX31856_ERROR_SPI;
-            }
+            status = MAX31856_ERROR_SPI;
+        }
+        
+    }
+
+    NRF_LOG_ERROR("Failed to read Cold Junction Temperature");
+    return status;
+}
+
+max31856_status max31856_getThermoCoupleTemperature(float* temperature)
+{
+    const uint8_t tx_buffer[] = { RREGISTER_LTCBH };
+    static uint8_t rx_buffer[sizeof(tx_buffer) + 3];
+
+    max31856_status status = max31856_startConversion();
+    if (status == MAX31856_SUCCESS)
+    {
+        if (spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer)))
+        {
+            uint32_t digitalTemperature = rx_buffer[1] << 16 | rx_buffer[2] << 8 | rx_buffer[3];
+            digitalTemperature |= ((digitalTemperature & 0x8000000) ? 0xFF000000 : 0x00000000);
+            *temperature = (digitalTemperature >> 5) * TC_RESOLUTION;
+            return status;
+        }
+        else
+        {
+            status = MAX31856_ERROR_SPI;
         }
     }
 
-    NRF_LOG_ERROR("Failed to read TC Temperature");
+    NRF_LOG_ERROR("Failed to read Thermocouple Temperature");
     return status;
 }
 

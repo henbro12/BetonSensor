@@ -15,7 +15,7 @@
 #define SPI_IRQ_PRIORITY    6                                ///< 0-7 -> 0,1,4,5 reserverd by softdevice
 #define SPI_ORC             0xFF                             ///< Over-run charachter
 #define SPI_FREQUENCY       NRF_DRV_SPI_FREQ_1M              ///< 125K-250K-500K-1M-2M-4M-8M
-#define SPI_MODE            NRF_DRV_SPI_MODE_0               ///< 0-high-leading|1-high-trailing|2-low-leading|3-low-trailing   
+#define SPI_MODE            NRF_DRV_SPI_MODE_1               ///< 0-high-leading|1-high-trailing|2-low-leading|3-low-trailing   
 #define SPI_BIT_ORDER       NRF_DRV_SPI_BIT_ORDER_MSB_FIRST  ///< MSB-LSB
 
 

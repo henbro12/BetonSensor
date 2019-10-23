@@ -50,15 +50,17 @@
 #define CJTO        0x00    ///< DEFAULT
 
 /** Specific bits in a register */
-#define FAULTCLR    0x02    ///< Fault Status Clear Bit
-#define ONESHOT     0x64    ///< One-Shot Conversion Bit
+#define CR0_AUTOCONVERT 0x80    ///< Conversion Mode Bit
+#define CR0_ONESHOT     0x40    ///< One-Shot Conversion Bit
+#define CR0_FAULTCLR    0x02    ///< Fault Status Clear Bit
 
 /** Pin numbers */
 #define DRDY        0x29    ///< DRDY Pin number
 #define FAULT       0x27    ///< FAULT Pin number
 
-/** Specific Thermocouple details */
+/** Temperature Resolutions */
 #define TC_RESOLUTION   0.0078125f  ///< Termocouple Temperature Resolution
+#define CJ_RESOLUTION   0.015625f   ///< Cold Junction  Temperature Resolution
 
 /** Extra defines */
 #define CHAR_BIT    __CHAR_BIT__    ///< Returns number of bits in a char
@@ -138,12 +140,29 @@ max31856_status max31856_startConversion();
 
 
 /** 
+ * @brief Function to wait for DRDY pin to assert, indicating conversion is completed
+ * 
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
+max31856_status max31856_waitForDRDY();
+
+
+/** 
  * @brief Function to read the thermocouple temperature registers and convert it to degree celcius
  * 
  * @param[in] temperature           Pointer to a temperature instance for reading the thermocouple value
  * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
  */
-max31856_status max31856_getTemperature(float* temperature);
+max31856_status max31856_getThermoCoupleTemperature(float* temperature);
+
+
+/** 
+ * @brief Function to read the cold junction temperature registers and convert it to degree celcius
+ * 
+ * @param[in] temperature           Pointer to a temperature instance for reading the cold junction value
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
+max31856_status max31856_getColdJunctionTemperature(float* temperature);
 
 
 #endif // _MAX31856_H__
