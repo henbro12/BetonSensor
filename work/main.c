@@ -23,23 +23,6 @@
 #define SPI_INSTANCE    0
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 
-/**
- * @brief Function for resetting the output voltage to 3V3,
- * reset board afterwards for the new configuration to take effect
- */
-void reset_voltage_level()
-{
-    if (NRF_UICR->REGOUT0 != UICR_REGOUT0_VOUT_2V4) 
-    {
-        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Wen << NVMC_CONFIG_WEN_Pos;
-        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
-        NRF_UICR->REGOUT0 = UICR_REGOUT0_VOUT_2V4;
-
-        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Ren << NVMC_CONFIG_WEN_Pos;
-        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
-    }
-}
-
 
 /**
  * @brief Function for initializing the nrf log module
@@ -62,7 +45,6 @@ int main(void)
 
     /* Configure board. */
     bsp_board_init(BSP_INIT_LEDS);
-    reset_voltage_level();
     
     log_init();
     NRF_LOG_INFO("\r\n\n\n\t*** CONCRETE SENSOR ***\r\n")
