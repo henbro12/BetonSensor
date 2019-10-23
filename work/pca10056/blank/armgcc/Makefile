@@ -86,6 +86,7 @@ SRC_FILES += \
   $(PROJ_DIR)/main.c \
   $(PROJ_DIR)/source/spi.c \
   $(PROJ_DIR)/source/max31856.c \
+  $(PROJ_DIR)/source/timer.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \

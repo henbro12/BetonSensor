@@ -15,31 +15,31 @@
         "spi.h": "c"
     },
     "actionButtons": {
-        "defaultColor": "black",
+        "defaultColor": "white",
         "loadNpmCommands":false,
         "reloadButton":"⟳",
         "commands": [
             {
                 "name": "clean",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make clean"
             },
             {
                 "name": "make",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make"
             },
             {
                 "name": "softdevice",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make flash_softdevice"
             },
             {
                 "name": "flash",
-                "color": "black",
+                "color": "white",
                 "singleInstance": true,
                 "command": "cd pca10056/blank/armgcc && make flash"
             },
