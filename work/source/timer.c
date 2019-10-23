@@ -38,7 +38,7 @@ void timer_init()
 
 void timer_start()
 {
-    APP_ERROR_CHECK(app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(120000), NULL));
+    APP_ERROR_CHECK(app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(600000), NULL));
 }
 
 void timer_stop()

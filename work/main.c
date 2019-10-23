@@ -33,30 +33,11 @@ static void lfclk_request(void)
 
 
 /**
- * @brief Function for resetting the output voltage to 3V3,
- * reset board afterwards for the new configuration to take effect
- */
-void reset_voltage_level()
-{
-    if (NRF_UICR->REGOUT0 != UICR_REGOUT0_VOUT_2V4) 
-    {
-        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Wen << NVMC_CONFIG_WEN_Pos;
-        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
-        NRF_UICR->REGOUT0 = UICR_REGOUT0_VOUT_2V4;
-
-        NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Ren << NVMC_CONFIG_WEN_Pos;
-        while (NRF_NVMC->READY == NVMC_READY_READY_Busy){}
-    }
-}
-
-
-/**
  * @brief Function for application main entry.
  */
 int main(void)
 {
     /* Configure board. */
-    reset_voltage_level();
     lfclk_request();
     bsp_board_init(BSP_INIT_LEDS);
 
