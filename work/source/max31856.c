@@ -9,7 +9,7 @@
 #include "nrf_log_default_backends.h"
 
 /** Member to hold the SPI instance */
-const nrf_drv_spi_t *m_spi;
+static const nrf_drv_spi_t *m_spi;
 
 
 max31856_status max31856_setRegisters()

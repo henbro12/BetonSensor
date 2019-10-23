@@ -7,19 +7,20 @@
 
 APP_TIMER_DEF(m_repeated_timer_id);     /**< Handler for repeated timer used to blink LED 1. */
 
+static volatile bool m_timer_int_flag = false;
 
 /**
  * @brief Timeout handler for the repeated timer.
  */
 static void repeated_timer_handler(void* p_context)
 {
-    nrf_drv_gpiote_out_toggle(LED_1);
+    timer_setIntFlag(true);
 }
 
 /**
  * @brief Create timers.
  */
-static void create_timers()
+static void create_timers(void)
 {
     ret_code_t err_code;
 
@@ -30,18 +31,30 @@ static void create_timers()
 }
 
 
-void timer_init()
+void timer_init(void)
 {
     app_timer_init();
     create_timers();
 }
 
-void timer_start()
+void timer_start(uint32_t timeout)
 {
-    APP_ERROR_CHECK(app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(600000), NULL));
+    APP_ERROR_CHECK(app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(timeout), NULL));
 }
 
-void timer_stop()
+void timer_stop(void)
 {
     APP_ERROR_CHECK(app_timer_stop(m_repeated_timer_id));
+}
+
+
+
+bool timer_getIntFlag(void)
+{
+    return m_timer_int_flag;
+}
+
+void timer_setIntFlag(bool timerIntFlag)
+{
+    m_timer_int_flag = timerIntFlag;
 }

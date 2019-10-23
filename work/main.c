@@ -54,13 +54,37 @@ static void log_init(void)
 }
 
 
+
+static void max31856_int_handler(void)
+{
+    bsp_board_leds_off();
+        
+    max31856_checkFaultStatus();
+
+    float coldJunctionTemperature = 0.0f;
+    if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
+    {
+       NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
+    }
+
+    nrf_delay_ms(500);
+
+    float thermocoupleTemperature = 0.0f;
+    if (max31856_getThermoCoupleTemperature(&thermocoupleTemperature) == MAX31856_SUCCESS)
+    {
+        NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
+    }
+
+    bsp_board_leds_on();
+}
+
+
+
 /**
  * @brief Function for application main entry
  */
 int main(void)
 {
-    nrf_delay_ms(500);
-
     /* Configure board. */
     lfclk_request();
     bsp_board_init(BSP_INIT_LEDS);
@@ -68,35 +92,25 @@ int main(void)
     log_init();
     NRF_LOG_INFO("\r\n\n\n\t*** CONCRETE SENSOR ***\r\n")
 
+    timer_init();
     spi_init(&spi);
     max31856_init(&spi);
-
-    //nrf_gpio_cfg_input(DRDY, NRF_GPIO_PIN_PULLUP);
 
     bsp_board_leds_on();
     NRF_LOG_FLUSH();
 
+    timer_start(10000);
+
     while(true)
     {
-        max31856_checkFaultStatus();
-
-        float coldJunctionTemperature = 0.0f;
-        if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
+        if (timer_getIntFlag())
         {
-            NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
+            timer_setIntFlag(false);
+            max31856_int_handler();
         }
 
-        float thermocoupleTemperature = 0.0f;
-        if (max31856_getThermoCoupleTemperature(&thermocoupleTemperature) == MAX31856_SUCCESS)
-        {
-            NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
-        }
-
+        (void) sd_app_evt_wait();
         NRF_LOG_FLUSH();
-        nrf_delay_ms(5000);
-        bsp_board_leds_off();
-        nrf_delay_ms(500);
-        bsp_board_leds_on();
     }
 }
 
