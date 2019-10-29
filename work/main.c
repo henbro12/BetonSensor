@@ -18,6 +18,7 @@
 
 #include "max31856.h"
 #include "timer.h"
+#include "storage.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -54,7 +55,19 @@ static void log_init(void)
 }
 
 
+/**
+ * @brief Function for the Power manager
+ */
+// static void power_manage(void)
+// {
+//     ret_code_t err_code = sd_app_evt_wait();
+//     APP_ERROR_CHECK(err_code);
+// }
 
+
+/**
+ * @brief Function for handling the MAX31856 timer interrupt
+ */
 static void max31856_int_handler(void)
 {
     bsp_board_leds_off();
@@ -76,8 +89,7 @@ static void max31856_int_handler(void)
     }
 
     bsp_board_leds_on();
-}
-
+} 
 
 
 /**
@@ -99,7 +111,17 @@ int main(void)
     bsp_board_leds_on();
     NRF_LOG_FLUSH();
 
-    timer_start(20000);
+
+    APP_ERROR_CHECK(fds_storage_init());
+    APP_ERROR_CHECK(fds_find_and_delete());
+    APP_ERROR_CHECK(fds_write());
+    while (fds_getWriteFlag() == 0);
+    APP_ERROR_CHECK(fds_read());
+
+    NRF_LOG_FLUSH();
+    nrf_delay_ms(10000);
+
+    timer_start(60000);
 
     while(true)
     {
