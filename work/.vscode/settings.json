@@ -13,7 +13,8 @@
         "max31856.h": "c",
         "nrf_log_ctrl.h": "c",
         "spi.h": "c",
-        "nrf_log_default_backends.h": "c"
+        "nrf_log_default_backends.h": "c",
+        "nrf_pwr_mgmt.h": "c"
     },
     "actionButtons": {
         "defaultColor": "white",

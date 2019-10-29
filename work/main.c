@@ -99,7 +99,7 @@ int main(void)
     bsp_board_leds_on();
     NRF_LOG_FLUSH();
 
-    timer_start(10000);
+    timer_start(20000);
 
     while(true)
     {
@@ -108,9 +108,12 @@ int main(void)
             timer_setIntFlag(false);
             max31856_int_handler();
         }
-
-        (void) sd_app_evt_wait();
         NRF_LOG_FLUSH();
+
+
+        __WFE();
+        __SEV();
+        __WFE();
     }
 }
 
