@@ -24,10 +24,19 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+#define SIZE_OF_FLOAT   4
 
 #define SPI_INSTANCE    0
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 
+#define FILE_ID_FDS     0x3185
+#define REC_KEY_FDS     0x0001
+
+union
+{
+    float float_val;
+    unsigned char bytes_val[SIZE_OF_FLOAT];
+} floatAsBytes;
 
 /**
  * @brief Function starting the internal LFCLK oscillator.
@@ -65,6 +74,18 @@ static void log_init(void)
 // }
 
 
+unsigned char* float2bytes(float m_float)
+{
+    floatAsBytes.float_val = m_float;
+    return floatAsBytes.bytes_val;
+}
+
+float bytes2float(unsigned char m_bytes[SIZE_OF_FLOAT])
+{
+    memcpy(floatAsBytes.bytes_val, m_bytes, SIZE_OF_FLOAT);
+    return floatAsBytes.float_val;
+}
+
 /**
  * @brief Function for handling the MAX31856 timer interrupt
  */
@@ -75,9 +96,14 @@ static void max31856_int_handler(void)
     max31856_checkFaultStatus();
 
     float coldJunctionTemperature = 0.0f;
+    unsigned char* coldJunctionTemperatureBytes;
     if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
     {
-       NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
+        NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
+        coldJunctionTemperatureBytes = float2bytes(coldJunctionTemperature);
+        
+        APP_ERROR_CHECK(fds_write(FILE_ID_FDS, REC_KEY_FDS, coldJunctionTemperatureBytes));
+        while (!fds_getWriteFlag());
     }
 
     nrf_delay_ms(500);
@@ -91,6 +117,18 @@ static void max31856_int_handler(void)
     bsp_board_leds_on();
 } 
 
+void read_records(void) 
+{
+    static uint8_t read_data[MAX_RECORDS][RECORD_SIZE] = {0};
+    APP_ERROR_CHECK(fds_read(FILE_ID_FDS, REC_KEY_FDS, read_data));
+
+    for (int i = 0; i < fds_getNumberOfRecords(); i++)
+    {
+        float coldJunctionTemperature = bytes2float(read_data[i]);
+        NRF_LOG_INFO("Record %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i, NRF_LOG_FLOAT(coldJunctionTemperature));
+    }
+    NRF_LOG_INFO("\t*** END OF RECORDS ***\r\n");
+}
 
 /**
  * @brief Function for application main entry
@@ -108,20 +146,14 @@ int main(void)
     spi_init(&spi);
     max31856_init(&spi);
 
+    APP_ERROR_CHECK(fds_storage_init());
+    //APP_ERROR_CHECK(fds_find_and_delete(FILE_ID_FDS, REC_KEY_FDS));
+
     bsp_board_leds_on();
     NRF_LOG_FLUSH();
 
-
-    APP_ERROR_CHECK(fds_storage_init());
-    APP_ERROR_CHECK(fds_find_and_delete());
-    APP_ERROR_CHECK(fds_write());
-    while (fds_getWriteFlag() == 0);
-    APP_ERROR_CHECK(fds_read());
-
-    NRF_LOG_FLUSH();
-    nrf_delay_ms(10000);
-
-    timer_start(60000);
+    read_records();
+    timer_start(600000);
 
     while(true)
     {
