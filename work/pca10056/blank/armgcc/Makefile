@@ -85,6 +85,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/softdevice/common/nrf_sdh_soc.c \
   $(PROJ_DIR)/main.c \
   $(PROJ_DIR)/source/timer.c \
+  $(PROJ_DIR)/source/ble_tc_service.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
