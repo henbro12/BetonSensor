@@ -117,12 +117,9 @@
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
+BLE_TC_SERVICE_DEF(m_tc_service);
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
-
-
-// YOUR_JOB: Declare all services structure your application is using
-BLE_TC_SERVICE_DEF(m_tc_service);
 
 
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
@@ -252,23 +249,40 @@ static void nrf_qwr_error_handler(uint32_t nrf_error)
 }
 
 
-/**@brief Function for handling the YYY Service events.
- * YOUR_JOB implement a service handler function depending on the event the service you are using can generate
- *
- * @details This function will be called for all YY Service events which are passed to
+/**@brief Function for handling the TC Service events.
+ * @details This function will be called for all TC Service events which are passed to
  *          the application.
  *
- * @param[in]   p_yy_service   YY Service structure.
- * @param[in]   p_evt          Event received from the YY Service.
+ * @param[in]   p_tc_service   TC Service structure.
+ * @param[in]   p_evt          Event received from the TC Service.
  *
- *
-static void on_yys_evt(ble_yy_service_t     * p_yy_service,
-                       ble_yy_service_evt_t * p_evt)
+ */
+static void on_tc_service_evt(ble_tc_service_t* p_tc_service,
+                              ble_tc_service_evt_t* p_evt)
 {
     switch (p_evt->evt_type)
     {
-        case BLE_YY_NAME_EVT_WRITE:
-            APPL_LOG("[APPL]: charact written with value %s. ", p_evt->params.char_xx.value.p_str);
+        case BLE_TC_SERVICE_EVT_CONNECTED:
+            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_CONNECTED");
+            break;
+        
+        case BLE_TC_SERVICE_EVT_DISCONNECTED:
+            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_DISCONNECTED");
+            break;
+
+        case BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED:
+            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED\r\n");
+
+            ret_code_t err_code;
+            uint8_t tc_value = 0x33;
+
+            err_code = ble_tc_service_value_update(&m_tc_service, tc_value);
+            APP_ERROR_CHECK(err_code);
+
+            break;
+        
+        case BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED:
+            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED\r\n");
             break;
 
         default:
@@ -276,7 +290,7 @@ static void on_yys_evt(ble_yy_service_t     * p_yy_service,
             break;
     }
 }
-*/
+
 
 /**@brief Function for initializing services that will be used by the application.
  */
@@ -286,7 +300,7 @@ static void services_init(void)
     nrf_ble_qwr_init_t      qwr_init         = {0};
     ble_tc_service_init_t   tc_service_init  = {0};
 
-    // Initialize Queued Write Module.
+    // Initialize Queued Write Module
     qwr_init.error_handler = nrf_qwr_error_handler;
 
     err_code = nrf_ble_qwr_init(&m_qwr, &qwr_init);
@@ -294,6 +308,13 @@ static void services_init(void)
 
     // Initialize service init structure to zero
     memset(&tc_service_init, 0, sizeof(tc_service_init));
+
+    // Set peer permissions for tc service
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tc_service_init.tc_value_char_attr_md.read_perm);
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tc_service_init.tc_value_char_attr_md.write_perm);
+
+    // Set the TC event handler
+    tc_service_init.evt_handler = on_tc_service_evt;
 
     err_code = ble_tc_service_init(&m_tc_service, &tc_service_init);
     APP_ERROR_CHECK(err_code); 
@@ -390,7 +411,11 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     switch (ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
-            NRF_LOG_INFO("Fast advertising.");
+            NRF_LOG_INFO("Fast advertising\r\n");
+            break;
+
+        case BLE_ADV_EVT_IDLE:
+            NRF_LOG_INFO("Advertising idle state\r\n");
             break;
 
         default:
@@ -411,12 +436,12 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_DISCONNECTED:
-            NRF_LOG_INFO("Disconnected.");
+            NRF_LOG_INFO("Disconnected\r\n");
             bsp_board_led_on(BSP_BOARD_LED_0);
             break;
 
         case BLE_GAP_EVT_CONNECTED:
-            NRF_LOG_INFO("Connected.");
+            NRF_LOG_INFO("Connected\r\n");
             bsp_board_led_off(BSP_BOARD_LED_0);
 
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
@@ -426,7 +451,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
         {
-            NRF_LOG_DEBUG("PHY update request.");
+            NRF_LOG_DEBUG("PHY update request");
             ble_gap_phys_t const phys =
             {
                 .rx_phys = BLE_GAP_PHY_AUTO,
@@ -438,7 +463,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 
         case BLE_GATTC_EVT_TIMEOUT:
             // Disconnect on GATT Client timeout event.
-            NRF_LOG_DEBUG("GATT Client Timeout.");
+            NRF_LOG_DEBUG("GATT Client Timeout");
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
@@ -649,7 +674,8 @@ int main(void)
     peer_manager_init();
 
     // Start execution.
-    NRF_LOG_INFO("Template example started.");
+    NRF_LOG_INFO("*****************************************************\r\n\n");
+    NRF_LOG_INFO("Template example started.\r\n");
     application_timers_start();
 
     advertising_start(erase_bonds);
