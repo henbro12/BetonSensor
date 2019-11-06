@@ -39,10 +39,38 @@ static void on_disconnect(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble
 }
 
 
+/**@brief Function for handling write events to the TC characteristic.
+ *
+ * @param[in]   p_tc_service    TC structure.
+ * @param[in]   p_evt_write     Write event received from the BLE stack.
+ */
+static void on_tc_cccd_write(ble_tc_service_t* p_tc_service, ble_gatts_evt_write_t const* p_evt_write)
+{
+    if (p_evt_write->len == 2)
+    {
+        if (p_tc_service->evt_handler != NULL)
+        {
+            ble_tc_service_evt_t evt;
+
+            if (ble_srv_is_notification_enabled(p_evt_write->data))
+            {
+                evt.evt_type = BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED;
+            }
+            else
+            {
+                evt.evt_type = BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED;
+            }
+            // Call the application event handler.
+            p_tc_service->evt_handler(p_tc_service, &evt);
+        }
+    }
+}
+
+
 /**@brief Function for handling the Write event.
  *
- * @param[in]   p_cus       Custom Service structure.
- * @param[in]   p_ble_evt   Event received from the BLE stack.
+ * @param[in]   p_tc_service    TC structure.
+ * @param[in]   p_ble_evt       Event received from the BLE stack.
  */
 static void on_write(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
 {
@@ -60,21 +88,10 @@ static void on_write(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
         }
     }
 
-    // Check if the tc value CCCD is written to and that the value is the appropriate length, 2 bytes. 
-    if ((p_evt_write->handle == p_tc_service->char_handles.cccd_handle) && (p_evt_write->len == 2))
+    // Check if the tc value CCCD is written to.
+    if (p_evt_write->handle == p_tc_service->char_handles.cccd_handle)
     {
-        ble_tc_service_evt_t evt;
-
-        if (ble_srv_is_notification_enabled(p_evt_write->data))
-        {
-            evt.evt_type = BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED;
-        }
-        else
-        {
-            evt.evt_type = BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED;
-        }
-        // Call the application event handler.
-        p_tc_service->evt_handler(p_tc_service, &evt);
+        on_tc_cccd_write(p_tc_service, p_evt_write);
     }
 }
 

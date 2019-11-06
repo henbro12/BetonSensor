@@ -77,7 +77,11 @@
 #include "nrf_pwr_mgmt.h"
 #include "boards.h"
 
+#include "ble_bas.h"
+#include "ble_dis.h"
 #include "ble_tc_service.h"
+
+#include "battery_voltage.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -86,7 +90,12 @@
 
 #define DEVICE_NAME                     "Procrete"                              /**< Name of device. Will be included in the advertising data. */
 #define DEVICE_NAME_LEN                 strlen(DEVICE_NAME)                     /**< Name length of device. Will define the length of the advertising data. */
+
 #define MANUFACTURER_NAME               "ProwareTechnologies"                   /**< Manufacturer. Will be passed to Device Information Service. */
+#define SERIAL_NUM                      "1234"                                  /**< Serial Number. Will be passed to Device Information Service. */
+#define HARDWARE_REV                    "1.0"                                   /**< Hardware revision. Will be passed to Device Information Service. */
+#define FIRMAWARE_REV                   "1.0"                                   /**< Firmware revision. Will be passed to Device Information Service. */
+#define SOFTWARE_REV                    "1.0"                                   /**< Software revision. Will be passed to Device Information Service. */
 
 #define APP_ADV_INTERVAL                300                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
 
@@ -117,7 +126,10 @@
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
+
+BLE_BAS_DEF(m_bas);
 BLE_TC_SERVICE_DEF(m_tc_service);
+
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
@@ -126,6 +138,7 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        
 static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
 {
     {BLE_UUID_TC_SERVICE, BLE_UUID_TYPE_VENDOR_BEGIN},
+    {BLE_UUID_BATTERY_SERVICE, BLE_UUID_TYPE_BLE},
     {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}
 };
 
@@ -249,6 +262,33 @@ static void nrf_qwr_error_handler(uint32_t nrf_error)
 }
 
 
+/**@brief Function for performing battery measurement and updating the Battery Level characteristic
+ *        in Battery Service.
+ */
+static void battery_level_update(void)
+{
+    ret_code_t err_code;
+    
+    uint8_t  battery_level;
+    uint16_t vbatt;
+
+    battery_voltage_get(&vbatt);
+    battery_level = battery_level_in_percent(vbatt);
+    NRF_LOG_INFO("ADC result in percent: %d", battery_level);
+
+    err_code = ble_bas_battery_level_update(&m_bas, battery_level, BLE_CONN_HANDLE_ALL);
+    if ((err_code != NRF_SUCCESS) &&
+        (err_code != NRF_ERROR_INVALID_STATE) &&
+        (err_code != NRF_ERROR_RESOURCES) &&
+        (err_code != NRF_ERROR_BUSY) &&
+        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+       )
+    {
+        APP_ERROR_HANDLER(err_code);
+    }
+}
+
+
 /**@brief Function for handling the TC Service events.
  * @details This function will be called for all TC Service events which are passed to
  *          the application.
@@ -277,7 +317,14 @@ static void on_tc_service_evt(ble_tc_service_t* p_tc_service,
             uint8_t tc_value = 0x33;
 
             err_code = ble_tc_service_value_update(&m_tc_service, tc_value);
-            APP_ERROR_CHECK(err_code);
+            if ((err_code != NRF_SUCCESS) &&
+                (err_code != NRF_ERROR_INVALID_STATE) &&
+                (err_code != NRF_ERROR_RESOURCES) &&
+                (err_code != NRF_ERROR_BUSY) &&
+                (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
+            {
+                APP_ERROR_HANDLER(err_code);
+            }
 
             break;
         
@@ -299,6 +346,8 @@ static void services_init(void)
     ret_code_t              err_code;
     nrf_ble_qwr_init_t      qwr_init         = {0};
     ble_tc_service_init_t   tc_service_init  = {0};
+    ble_dis_init_t          dis_init         = {0};
+    ble_bas_init_t          bas_init         = {0};
 
     // Initialize Queued Write Module
     qwr_init.error_handler = nrf_qwr_error_handler;
@@ -306,7 +355,8 @@ static void services_init(void)
     err_code = nrf_ble_qwr_init(&m_qwr, &qwr_init);
     APP_ERROR_CHECK(err_code);
 
-    // Initialize service init structure to zero
+
+    // Initialize Thermocouple Service.
     memset(&tc_service_init, 0, sizeof(tc_service_init));
 
     // Set peer permissions for tc service
@@ -317,7 +367,38 @@ static void services_init(void)
     tc_service_init.evt_handler = on_tc_service_evt;
 
     err_code = ble_tc_service_init(&m_tc_service, &tc_service_init);
-    APP_ERROR_CHECK(err_code); 
+    APP_ERROR_CHECK(err_code);
+
+
+    // Initialize Battery Service.
+    memset(&bas_init, 0, sizeof(bas_init));
+
+    bas_init.evt_handler            = NULL;
+    bas_init.support_notification   = false;
+    bas_init.p_report_ref           = NULL;
+    bas_init.initial_batt_level     = 100;
+
+    bas_init.bl_rd_sec          = SEC_OPEN;
+    bas_init.bl_cccd_wr_sec     = SEC_OPEN;
+    bas_init.bl_report_rd_sec   = SEC_OPEN;
+
+    err_code = ble_bas_init(&m_bas, &bas_init);
+    APP_ERROR_CHECK(err_code);
+
+
+    // Initialize Device Information Service.
+    memset(&dis_init, 0, (sizeof(dis_init)));
+
+    ble_srv_ascii_to_utf8(&dis_init.manufact_name_str, (char*)MANUFACTURER_NAME);
+    ble_srv_ascii_to_utf8(&dis_init.serial_num_str, (char*)SERIAL_NUM);
+    ble_srv_ascii_to_utf8(&dis_init.hw_rev_str, (char*)HARDWARE_REV);
+    ble_srv_ascii_to_utf8(&dis_init.fw_rev_str, (char*)FIRMAWARE_REV);
+    ble_srv_ascii_to_utf8(&dis_init.sw_rev_str, (char*)SOFTWARE_REV);
+
+    dis_init.dis_char_rd_sec = SEC_OPEN;
+
+    err_code = ble_dis_init(&dis_init);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -447,6 +528,11 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
+
+            if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+            {
+                battery_level_update();
+            }
             break;
 
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
@@ -664,6 +750,7 @@ int main(void)
     log_init();
     timers_init();
     leds_init();
+    battery_voltage_init();
     power_management_init();
     ble_stack_init();
     gap_params_init();
