@@ -104,7 +104,7 @@ void ble_tc_service_on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context);
  *
  * @return      NRF_SUCCESS on success, otherwise an error code.
  */
-ret_code_t ble_tc_service_value_update(ble_tc_service_t* p_tc_service, uint8_t tc_value);
+ret_code_t ble_tc_service_send_data(ble_tc_service_t* p_tc_service, uint8_t* p_tc_data, uint16_t tc_data_length);
 
 
 #endif // _TC_SERVICE_H__

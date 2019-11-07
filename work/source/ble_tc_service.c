@@ -8,6 +8,140 @@
 #include "ble_srv_common.h"
 #include "ble_tc_service.h"
 
+
+#define TC_MAX_PACKET_LENGTH  20
+
+static volatile bool m_nrf_error_resources = false;
+
+volatile uint32_t m_tc_data_size = 0;
+volatile uint32_t m_tc_data_pos = 0;
+uint8_t* m_tc_data;
+ble_tc_service_t* m_tc_service;
+
+
+/**@brief Function for updating the custom value.
+ *
+ * @details The application calls this function when the cutom value should be updated. If
+ *          notification has been enabled, the custom value characteristic is sent to the client.
+ *       
+ * @param[in]   p_cus          Custom Service structure.
+ * @param[in]   Custom value 
+ *
+ * @return      NRF_SUCCESS on success, otherwise an error code.
+ */
+static ret_code_t ble_tc_service_send_packet(ble_tc_service_t* p_tc_service, uint8_t* p_tc_packet, uint16_t tc_packet_length)
+{
+    NRF_LOG_HEXDUMP_INFO(p_tc_packet, 8);
+
+    ret_code_t err_code;
+    ble_gatts_hvx_params_t hvx_params;
+
+    if (m_nrf_error_resources)
+    {
+        return NRF_ERROR_RESOURCES;
+    }
+
+    VERIFY_PARAM_NOT_NULL(p_tc_service);
+
+    if (p_tc_service->conn_handle == BLE_CONN_HANDLE_INVALID)
+    {
+        return NRF_ERROR_INVALID_STATE;
+    }
+
+    if (tc_packet_length > TC_MAX_PACKET_LENGTH)
+    {
+        return NRF_ERROR_INVALID_PARAM;
+    }
+
+    memset(&hvx_params, 0, sizeof(hvx_params));
+
+    hvx_params.handle   = p_tc_service->char_handles.value_handle;
+    hvx_params.type     = BLE_GATT_HVX_NOTIFICATION;
+    hvx_params.offset   = 0;
+    hvx_params.p_len    = &tc_packet_length;
+    hvx_params.p_data   = p_tc_packet;
+
+    err_code = sd_ble_gatts_hvx(p_tc_service->conn_handle, &hvx_params);
+    if (err_code == NRF_ERROR_RESOURCES)
+    {
+        m_nrf_error_resources = true;
+    }
+
+    return err_code;
+}
+
+
+static ret_code_t push_data_packets()
+{
+    ret_code_t err_code = NRF_SUCCESS;
+    uint32_t packet_length = TC_MAX_PACKET_LENGTH;
+    uint32_t packet_size = 0;
+    int count = 0;
+
+    while(err_code == NRF_SUCCESS)
+    {
+        //NRF_LOG_INFO("%d", count);
+
+        if ((m_tc_data_size - m_tc_data_pos) > packet_length)
+        {
+            packet_size = packet_length;
+        }
+        else if ((m_tc_data_size - m_tc_data_pos) >= 0)
+        {
+            packet_size = (m_tc_data_size - m_tc_data_pos);
+        }
+
+        if (packet_size > 0)
+        {
+            err_code = ble_tc_service_send_packet(m_tc_service, &m_tc_data[m_tc_data_pos], packet_size);
+            if (err_code == NRF_SUCCESS)
+            {
+                m_tc_data_pos += packet_size;
+            }
+            else
+            {
+                break;
+            }
+            
+        }
+        else
+        {
+            m_tc_data_size = 0;
+            m_tc_data_pos = 0;
+            memset(&m_tc_data, 0, sizeof(m_tc_data));
+            break;
+        }
+
+        count++;
+    }
+    return err_code;
+}
+
+
+ret_code_t ble_tc_service_send_data(ble_tc_service_t* p_tc_service, uint8_t* p_tc_data, uint16_t tc_data_length)
+{   
+    ret_code_t err_code;
+
+    if (p_tc_service == NULL)
+    {
+        return NRF_ERROR_NULL;
+    }
+
+    if (p_tc_service->conn_handle == BLE_CONN_HANDLE_INVALID)
+    {
+        return NRF_ERROR_INVALID_STATE;
+    }
+
+    m_tc_data_size = tc_data_length;
+    m_tc_data = p_tc_data;
+    m_tc_service = p_tc_service;
+
+    err_code = push_data_packets();
+    if (err_code == NRF_ERROR_RESOURCES) return NRF_SUCCESS;
+    return err_code;
+}
+
+
 /**@brief Function for handling the Connect event.
  *
  * @param[in]   p_cus       Custom Service structure.
@@ -96,63 +230,6 @@ static void on_write(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
 }
 
 
-/**@brief Function for updating the custom value.
- *
- * @details The application calls this function when the cutom value should be updated. If
- *          notification has been enabled, the custom value characteristic is sent to the client.
- *       
- * @param[in]   p_cus          Custom Service structure.
- * @param[in]   Custom value 
- *
- * @return      NRF_SUCCESS on success, otherwise an error code.
- */
-ret_code_t ble_tc_service_value_update(ble_tc_service_t* p_tc_service, uint8_t tc_value)
-{
-    if (p_tc_service == NULL)
-    {
-        return NRF_ERROR_NULL;
-    }
-
-    ret_code_t err_code;
-    ble_gatts_value_t gatts_value;
-
-    // Initialize value struct.
-    memset(&gatts_value, 0, sizeof(gatts_value));
-
-    gatts_value.len     = sizeof(uint8_t);
-    gatts_value.offset  = 0;
-    gatts_value.p_value = &tc_value;
-
-    // Update database.
-    err_code = sd_ble_gatts_value_set(p_tc_service->conn_handle,
-                                      p_tc_service->char_handles.value_handle,
-                                      &gatts_value);
-    VERIFY_SUCCESS(err_code);
-
-    // Send value if connected and notifying.
-    if (p_tc_service->conn_handle != BLE_CONN_HANDLE_INVALID)
-    {
-        ble_gatts_hvx_params_t hvx_params;
-
-        memset(&hvx_params, 0, sizeof(hvx_params));
-
-        hvx_params.handle   = p_tc_service->char_handles.value_handle;
-        hvx_params.type     = BLE_GATT_HVX_NOTIFICATION;
-        hvx_params.offset   = gatts_value.offset;
-        hvx_params.p_len    = &gatts_value.len;
-        hvx_params.p_data   = gatts_value.p_value;
-
-        err_code = sd_ble_gatts_hvx(p_tc_service->conn_handle, &hvx_params);
-    }
-    else
-    {
-        err_code = NRF_ERROR_INVALID_STATE;
-    }
-    
-    return err_code;
-}
-
-
 /**@brief Function for handling the Application's BLE Stack events.
  *
  * @details Handles all events from the BLE stack of interest to the Battery Service.
@@ -182,6 +259,17 @@ void ble_tc_service_on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context)
 
         case BLE_GATTS_EVT_WRITE:
             on_write(p_tc_service, p_ble_evt);
+            break;
+
+        case BLE_GATTS_EVT_HVN_TX_COMPLETE:
+            {
+                //NRF_LOG_INFO("BLE_GATTS_EVT_HVN_TX_COMPLETE");
+                if (m_tc_data_size > 0)
+                {
+                    push_data_packets();
+                }
+                m_nrf_error_resources = false;
+            }
             break;
 
         default:
@@ -245,7 +333,7 @@ static ret_code_t tc_char_add(ble_tc_service_t* p_tc_service, const ble_tc_servi
 
     attr_char_value.p_uuid      = &char_uuid;
     attr_char_value.p_attr_md   = &attr_md;
-    attr_char_value.max_len     = sizeof(uint8_t);
+    attr_char_value.max_len     = TC_MAX_PACKET_LENGTH;
     attr_char_value.init_len    = sizeof(uint8_t);
     attr_char_value.init_offs   = 0;
 

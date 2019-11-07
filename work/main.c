@@ -130,6 +130,7 @@ BLE_ADVERTISING_DEF(m_advertising);                                             
 BLE_BAS_DEF(m_bas);
 BLE_TC_SERVICE_DEF(m_tc_service);
 
+bool notify_enabled = false;
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
@@ -312,24 +313,12 @@ static void on_tc_service_evt(ble_tc_service_t* p_tc_service,
 
         case BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED:
             NRF_LOG_INFO("BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED\r\n");
-
-            ret_code_t err_code;
-            uint8_t tc_value = 0x33;
-
-            err_code = ble_tc_service_value_update(&m_tc_service, tc_value);
-            if ((err_code != NRF_SUCCESS) &&
-                (err_code != NRF_ERROR_INVALID_STATE) &&
-                (err_code != NRF_ERROR_RESOURCES) &&
-                (err_code != NRF_ERROR_BUSY) &&
-                (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
-            {
-                APP_ERROR_HANDLER(err_code);
-            }
-
+            notify_enabled = true;
             break;
         
         case BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED:
             NRF_LOG_INFO("BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED\r\n");
+            notify_enabled = false;
             break;
 
         default:
@@ -773,6 +762,49 @@ int main(void)
     for (;;)
     {
         idle_state_handle();
+
+        if (notify_enabled)
+        {
+            ret_code_t err_code;
+            uint8_t tc_data[500] = {
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,255
+            };
+
+            err_code = ble_tc_service_send_data(&m_tc_service, tc_data, sizeof(tc_data));
+            if ((err_code != NRF_SUCCESS) &&
+                (err_code != NRF_ERROR_INVALID_STATE) &&
+                (err_code != NRF_ERROR_RESOURCES) &&
+                (err_code != NRF_ERROR_BUSY) &&
+                (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
+            {
+                APP_ERROR_HANDLER(err_code);
+            }
+            notify_enabled = false;
+        }
     }
 }
 
