@@ -13,7 +13,46 @@
 static const nrf_drv_spi_t *m_spi;
 
 
-max31856_status max31856_setRegisters()
+/** 
+ * @brief Function to wait for DRDY pin to assert, indicating conversion is completed
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
+ */
+static max31856_status max31856_waitForDRDY() 
+{
+    uint8_t counter = 0;
+    while (nrf_gpio_pin_read(DRDY) && counter < 50) 
+    {
+        nrf_delay_ms(10);
+        counter++; 
+    }
+
+    return (counter >= 50) ? MAX31856_ERROR_DRDY : MAX31856_SUCCESS;
+}
+
+
+/** 
+ * @brief Function to start a conversion and determine the themocouple temperature
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
+ */
+static max31856_status max31856_startConversion()
+{
+    const uint8_t oneShot = CR0 | CR0_ONESHOT;
+    const uint8_t tx_buffer[] = { WREGISTER_CR0, oneShot };
+    static uint8_t rx_buffer[sizeof(tx_buffer)];
+    
+    bool success = spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer));
+    return success ? max31856_waitForDRDY() : MAX31856_ERROR_SPI;
+}
+
+
+/** 
+ * @brief Function to set the MAX31856 registers
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
+ */
+static max31856_status max31856_setRegisters()
 {
     // { Write Register, Value }
     static uint8_t tx_buffer[][2] = 
@@ -41,7 +80,12 @@ max31856_status max31856_setRegisters()
 }
 
 
-max31856_status max31856_checkRegisters()
+/** 
+ * @brief Function to check the MAX31856 registers
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
+ */
+static max31856_status max31856_checkRegisters()
 {
     // { Read Register, Expected Value }
     static uint8_t tx_buffer[][2] = 
@@ -71,6 +115,12 @@ max31856_status max31856_checkRegisters()
 }
 
 
+/** 
+ * @brief Function for initializing the MAX31856
+ * 
+ * @param[in] spi_instance          Instance of the spi interface to use
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance)
 {
     m_spi = spi_instance;
@@ -89,6 +139,12 @@ max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance)
     return status;
 }
 
+
+/** 
+ * @brief Function to check the FAULT status registers
+ * 
+ * @param[out] fault_status     Error code to determine the FAULT if any
+ */
 fault_status max31856_checkFaultStatus()
 {
     const uint8_t tx_buffer[] = { RREGISTER_SR };
@@ -118,6 +174,11 @@ fault_status max31856_checkFaultStatus()
 }
 
 
+/** 
+ * @brief Function to reset the FAULT status registers
+ * 
+ * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_resetFaultStatus()
 {
     const uint8_t fault_reset = CR0 | CR0_FAULTCLR;
@@ -129,6 +190,11 @@ max31856_status max31856_resetFaultStatus()
 }
 
 
+/** 
+ * @brief Function to print the FAULT error code
+ * 
+ * @param[in] fault     Fault status to be printed
+ */
 void max31856_printFaultStatus(fault_status fault)
 {
     switch (fault)
@@ -147,28 +213,14 @@ void max31856_printFaultStatus(fault_status fault)
     }
 }
 
-max31856_status max31856_waitForDRDY() 
-{
-    uint8_t counter = 0;
-    while (nrf_gpio_pin_read(DRDY) && counter < 50) 
-    {
-        nrf_delay_ms(10);
-        counter++; 
-    }
 
-    return (counter >= 50) ? MAX31856_ERROR_DRDY : MAX31856_SUCCESS;
-}
-
-max31856_status max31856_startConversion()
-{
-    const uint8_t oneShot = CR0 | CR0_ONESHOT;
-    const uint8_t tx_buffer[] = { WREGISTER_CR0, oneShot };
-    static uint8_t rx_buffer[sizeof(tx_buffer)];
-    
-    bool success = spi_transfer(m_spi, tx_buffer, sizeof(tx_buffer), rx_buffer, sizeof(rx_buffer));
-    return success ? max31856_waitForDRDY() : MAX31856_ERROR_SPI;
-}
-
+/** 
+ * @brief Function to read the cold junction temperature registers and convert it to degree celcius
+ * 
+ * @param[in] temperature   Pointer to a temperature instance for reading the cold junction value
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_getColdJunctionTemperature(float* temperature)
 {
     const uint8_t tx_buffer[] = { RREGISTER_CJTH };
@@ -194,6 +246,14 @@ max31856_status max31856_getColdJunctionTemperature(float* temperature)
     return status;
 }
 
+
+/** 
+ * @brief Function to read the thermocouple temperature registers and convert it to degree celcius
+ * 
+ * @param[in] temperature   Pointer to a temperature instance for reading the thermocouple value
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
+ */
 max31856_status max31856_getThermoCoupleTemperature(float* temperature)
 {
     const uint8_t tx_buffer[] = { RREGISTER_LTCBH };

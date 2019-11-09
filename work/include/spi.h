@@ -22,7 +22,7 @@
 /** 
  * @brief Function for initializing the SPI interface
  * 
- * @param[in] spi_instance          Instance of the spi interface to use
+ * @param[out] spi_instance          Instance of the spi interface to use
  */
 void spi_init(const nrf_drv_spi_t *const spi_instance);
 
@@ -30,12 +30,13 @@ void spi_init(const nrf_drv_spi_t *const spi_instance);
 /** 
  * @brief Function for transmitting and receiving data over the SPI bus
  * 
- * @param[in] spi_instance          Instance of the spi interface to use
- * @param[in] p_tx_buffer           Buffer for holding the message to transmit
- * @param[in] tx_buffer_length      Length of the transmit buffer
- * @param[in] p_rx_buffer           Buffer for holding the received message
- * @param[in] rx_buffer_length      Length of the receive buffer
- * @param[out] bool                 Boolean to indicate if the SPI transfer was successful
+ * @param[in]  spi_instance          Instance of the spi interface to use
+ * @param[in]  p_tx_buffer           Buffer for holding the message to transmit
+ * @param[in]  tx_buffer_length      Length of the transmit buffer
+ * @param[out] p_rx_buffer           Buffer for holding the received message
+ * @param[in]  rx_buffer_length      Length of the receive buffer
+ * 
+ * @return      Boolean to indicate if the SPI transfer was successful
  */
 bool spi_transfer(const nrf_drv_spi_t *const spi_instance, 
                   const uint8_t* p_tx_buffer, uint8_t tx_buffer_length,

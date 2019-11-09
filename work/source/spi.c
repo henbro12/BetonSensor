@@ -11,12 +11,27 @@
 static volatile bool    spi_xfer_done;
 
 
-void spi_event_handler(nrf_drv_spi_evt_t const* p_event,
+/** 
+ * @brief Function for handling the SPI event
+ * 
+ * @param[in] p_event          Pointer to the SPI event instance
+ * @param[in] p_context        Pointer to the SPI context instance
+ */
+static void spi_event_handler(nrf_drv_spi_evt_t const* p_event,
                                          void*  p_context)
 {
+    UNUSED_PARAMETER(p_event);
+    UNUSED_PARAMETER(p_context);
+
     spi_xfer_done = true;
 }
 
+
+/** 
+ * @brief Function for initializing the SPI interface
+ * 
+ * @param[out] spi_instance          Instance of the spi interface to use
+ */
 void spi_init(const nrf_drv_spi_t* const spi_instance)
 {
     nrf_drv_spi_config_t spi_config = NRF_DRV_SPI_DEFAULT_CONFIG;
@@ -35,6 +50,17 @@ void spi_init(const nrf_drv_spi_t* const spi_instance)
 }
 
 
+/** 
+ * @brief Function for transmitting and receiving data over the SPI bus
+ * 
+ * @param[in]  spi_instance          Instance of the spi interface to use
+ * @param[in]  p_tx_buffer           Buffer for holding the message to transmit
+ * @param[in]  tx_buffer_length      Length of the transmit buffer
+ * @param[out] p_rx_buffer           Buffer for holding the received message
+ * @param[in]  rx_buffer_length      Length of the receive buffer
+ * 
+ * @return      Boolean to indicate if the SPI transfer was successful
+ */
 bool spi_transfer(const nrf_drv_spi_t* const spi_instance, 
                   const uint8_t* p_tx_buffer, uint8_t tx_buffer_length,
                   uint8_t* p_rx_buffer, uint8_t rx_buffer_length)

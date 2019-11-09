@@ -12,7 +12,7 @@
  * @param[in] write_record key          Key of the record to write to
  * @param[in] p_write_data              Pointer to the data container
  * 
- * @param[out] ret_code_t               Return status code
+ * @return      NRF_SUCCESS if successful, else error code
  */
 ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data);
 
@@ -22,9 +22,9 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
  * 
  * @param[in] write_file_id             ID of the file to write
  * @param[in] write_record key          Key of the record to write to
- * @param[in] p_read_data               Pointer to the data container
+ * @param[out] p_read_data              Pointer to the data container
  * 
- * @param[out] ret_code_t               Return status code
+ * @return      NRF_SUCCESS if successful, else error code
  */
 ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[RECORD_SIZE]);
 
@@ -35,7 +35,7 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
  * @param[in] write_file_id             ID of the file to write
  * @param[in] write_record key          Key of the record to write to
  * 
- * @param[out] ret_code_t               Return status code
+ * @return      NRF_SUCCESS if successful, else error code
  */
 ret_code_t fds_find_and_delete(uint32_t read_file_id, uint32_t read_record_key);
 
@@ -43,7 +43,7 @@ ret_code_t fds_find_and_delete(uint32_t read_file_id, uint32_t read_record_key);
 /** 
  * @brief Function for initializing the FDS
  * 
- * @param[out] ret_code_t               Return status code
+ * @return      NRF_SUCCESS if successful, else error code
  */
 ret_code_t fds_storage_init(void);
 
@@ -51,7 +51,7 @@ ret_code_t fds_storage_init(void);
 /** 
  * @brief Function for getting the write flag
  * 
- * @param[out] bool                 Boolean indicating the write status
+ * @return      Boolean indicating the write status
  */
 bool fds_getWriteFlag(void);
 
@@ -67,7 +67,7 @@ void fds_setWriteFlag(bool fds_write_flag);
 /** 
  * @brief Function for getting the number of found records
  * 
- * @param[out] unint16_t            16 bit initeger indicating the number of records found
+ * @return      16 bit initeger indicating the number of records found
  */
 uint16_t fds_getNumberOfRecords(void);
 

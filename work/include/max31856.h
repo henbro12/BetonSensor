@@ -102,7 +102,8 @@ typedef enum
  * @brief Function for initializing the MAX31856
  * 
  * @param[in] spi_instance          Instance of the spi interface to use
- * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
  */
 max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance);
 
@@ -110,7 +111,7 @@ max31856_status max31856_init(const nrf_drv_spi_t *const spi_instance);
 /** 
  * @brief Function to check the FAULT status registers
  * 
- * @param[out] fault_status         Error code to determine the FAULT if any
+ * @return  Error code to determine the FAULT if any
  */
 fault_status max31856_checkFaultStatus();
 
@@ -118,7 +119,7 @@ fault_status max31856_checkFaultStatus();
 /** 
  * @brief Function to reset the FAULT status registers
  * 
- * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ * @return  Error code to determine the status of MAX31856 if any
  */
 max31856_status max31856_resetFaultStatus();
 
@@ -132,37 +133,23 @@ void max31856_printFaultStatus(fault_status fault);
 
 
 /** 
- * @brief Function to start a conversion and determine the themocouple temperature
+ * @brief Function to read the cold junction temperature registers and convert it to degree celcius
  * 
- * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
- */
-max31856_status max31856_startConversion();
-
-
-/** 
- * @brief Function to wait for DRDY pin to assert, indicating conversion is completed
+ * @param[in] temperature           Pointer to a temperature instance for reading the cold junction value
  * 
- * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ * @return  Error code to determine the status of MAX31856 if any
  */
-max31856_status max31856_waitForDRDY();
+max31856_status max31856_getColdJunctionTemperature(float* temperature);
 
 
 /** 
  * @brief Function to read the thermocouple temperature registers and convert it to degree celcius
  * 
  * @param[in] temperature           Pointer to a temperature instance for reading the thermocouple value
- * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
+ * 
+ * @return  Error code to determine the status of MAX31856 if any
  */
 max31856_status max31856_getThermoCoupleTemperature(float* temperature);
-
-
-/** 
- * @brief Function to read the cold junction temperature registers and convert it to degree celcius
- * 
- * @param[in] temperature           Pointer to a temperature instance for reading the cold junction value
- * @param[out] max31856_status      Error code to determine the status of MAX31856 if any
- */
-max31856_status max31856_getColdJunctionTemperature(float* temperature);
 
 
 #endif // _MAX31856_H__

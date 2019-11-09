@@ -74,12 +74,26 @@ static void log_init(void)
 // }
 
 
+/**
+ * @brief Function for converting a float to bytes
+ * 
+ * @param[in] m_float    Float to be converted to bytes
+ * 
+ * @return  Bytes that form a float value
+ */
 unsigned char* float2bytes(float m_float)
 {
     floatAsBytes.float_val = m_float;
     return floatAsBytes.bytes_val;
 }
 
+/**
+ * @brief Function for converting bytes to a float
+ * 
+ * @param[in] m_bytes    Bytes that form a float (4 bytes)
+ * 
+ * @return  Float value
+ */
 float bytes2float(unsigned char m_bytes[SIZE_OF_FLOAT])
 {
     memcpy(floatAsBytes.bytes_val, m_bytes, SIZE_OF_FLOAT);
@@ -91,19 +105,22 @@ float bytes2float(unsigned char m_bytes[SIZE_OF_FLOAT])
  */
 static void max31856_int_handler(void)
 {
-    bsp_board_leds_off();
+    bsp_board_leds_on();
         
     max31856_checkFaultStatus();
 
     float coldJunctionTemperature = 0.0f;
     unsigned char* coldJunctionTemperatureBytes;
+    
     if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
     {
         NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
         coldJunctionTemperatureBytes = float2bytes(coldJunctionTemperature);
         
-        APP_ERROR_CHECK(fds_write(FILE_ID_FDS, REC_KEY_FDS, coldJunctionTemperatureBytes));
-        while (!fds_getWriteFlag());
+        if (coldJunctionTemperature != 0.0f) {
+            APP_ERROR_CHECK(fds_write(FILE_ID_FDS, REC_KEY_FDS, coldJunctionTemperatureBytes));
+            while (!fds_getWriteFlag());
+        }
     }
 
     nrf_delay_ms(500);
@@ -114,9 +131,12 @@ static void max31856_int_handler(void)
         NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
     }
 
-    bsp_board_leds_on();
+    bsp_board_leds_off();
 } 
 
+/**
+ * @brief Function for reading the FDS records.
+ */
 void read_records(void) 
 {
     static uint8_t read_data[MAX_RECORDS][RECORD_SIZE] = {0};
@@ -125,7 +145,7 @@ void read_records(void)
     for (int i = 0; i < fds_getNumberOfRecords(); i++)
     {
         float coldJunctionTemperature = bytes2float(read_data[i]);
-        NRF_LOG_INFO("Record %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i, NRF_LOG_FLOAT(coldJunctionTemperature));
+        NRF_LOG_INFO("Record %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i + 1, NRF_LOG_FLOAT(coldJunctionTemperature));
     }
     NRF_LOG_INFO("\t*** END OF RECORDS ***\r\n");
 }
@@ -149,18 +169,18 @@ int main(void)
     APP_ERROR_CHECK(fds_storage_init());
     //APP_ERROR_CHECK(fds_find_and_delete(FILE_ID_FDS, REC_KEY_FDS));
 
-    bsp_board_leds_on();
+    bsp_board_leds_off();
     NRF_LOG_FLUSH();
 
     read_records();
-    timer_start(600000);
+    timer_start(5000);
 
     while(true)
     {
         if (timer_getIntFlag())
         {
-            timer_setIntFlag(false);
             max31856_int_handler();
+            timer_setIntFlag(false);
         }
         NRF_LOG_FLUSH();
 
