@@ -217,18 +217,6 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 }
 
 
-/**@brief Function for the Timer initialization.
- *
- * @details Initializes the timer module. This creates and starts application timers.
- */
-static void timers_init(void)
-{
-    // Initialize timer module.
-    ret_code_t err_code = app_timer_init();
-    APP_ERROR_CHECK(err_code);
-}
-
-
 /**@brief Function for the GAP initialization.
  *
  * @details This function sets up all the necessary GAP (Generic Access Profile) parameters of the
@@ -704,6 +692,19 @@ static void log_init(void)
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
+
+/**@brief Function for the Timer initialization.
+ *
+ * @details Initializes the timer module. This creates and starts application timers.
+ */
+static void timers_init(void)
+{
+    // Initialize timer module.
+    ret_code_t err_code = app_timer_init();
+    APP_ERROR_CHECK(err_code);
+}
+
+
 /**@brief Function for initializing power management.
  */
 static void power_management_init(void)
@@ -726,16 +727,6 @@ static void idle_state_handle(void)
     }
 }
 
-/**@brief Function for putting the chip into sleep mode.
- *
- * @note This function will not return.
- */
-// static void sleep_mode_enter(void)
-// {
-//     ret_code_t err_code;
-//     err_code = sd_power_system_off();
-//     APP_ERROR_CHECK(err_code);
-// }
 
 /**@brief Function for starting advertising.
  */
@@ -752,6 +743,19 @@ static void advertising_start(bool erase_bonds)
         APP_ERROR_CHECK(err_code);
     }
 }
+
+
+/**@brief Function for putting the chip into sleep mode.
+ *
+ * @note This function will not return.
+ */
+// static void sleep_mode_enter(void)
+// {
+//     ret_code_t err_code;
+//     err_code = sd_power_system_off();
+//     APP_ERROR_CHECK(err_code);
+// }
+
 
 /**@brief Function for application main entry.
  */
