@@ -6,33 +6,30 @@
 #include "nrf_gpio.h"
 #include "nrf_log.h"
 #include "ble_srv_common.h"
-#include "ble_tc_service.h"
+#include "ble_tcs.h"
 
 
 #define TC_MAX_PACKET_LENGTH  20
 
 static volatile bool m_nrf_error_resources = false;
-
 volatile uint32_t m_tc_data_size = 0;
 volatile uint32_t m_tc_data_pos = 0;
 uint8_t* m_tc_data;
-ble_tc_service_t* m_tc_service;
 
 
-/**@brief Function for updating the custom value.
+/**@brief Function for updating the Thermocouple value per packet.
  *
- * @details The application calls this function when the cutom value should be updated. If
- *          notification has been enabled, the custom value characteristic is sent to the client.
+ * @details The application calls this function when the thermocouple value should be updated.
+ *          A packet of max 20 bytes will be send to the client.
  *       
- * @param[in]   p_cus          Custom Service structure.
- * @param[in]   Custom value 
+ * @param[in]   p_tcs               Thermocouple Service structure.
+ * @param[in]   p_tc_packet         Packet to be send. 
+ * @param[in]   tc_packet_length    Length of the packet.
  *
  * @return      NRF_SUCCESS on success, otherwise an error code.
  */
-static ret_code_t ble_tc_service_send_packet(ble_tc_service_t* p_tc_service, uint8_t* p_tc_packet, uint16_t tc_packet_length)
+static ret_code_t ble_tcs_send_packet(ble_tcs_t* p_tcs, uint8_t* p_tc_packet, uint16_t tc_packet_length)
 {
-    NRF_LOG_HEXDUMP_INFO(p_tc_packet, 8);
-
     ret_code_t err_code;
     ble_gatts_hvx_params_t hvx_params;
 
@@ -41,9 +38,9 @@ static ret_code_t ble_tc_service_send_packet(ble_tc_service_t* p_tc_service, uin
         return NRF_ERROR_RESOURCES;
     }
 
-    VERIFY_PARAM_NOT_NULL(p_tc_service);
+    VERIFY_PARAM_NOT_NULL(p_tcs);
 
-    if (p_tc_service->conn_handle == BLE_CONN_HANDLE_INVALID)
+    if (p_tcs->conn_handle == BLE_CONN_HANDLE_INVALID)
     {
         return NRF_ERROR_INVALID_STATE;
     }
@@ -55,13 +52,13 @@ static ret_code_t ble_tc_service_send_packet(ble_tc_service_t* p_tc_service, uin
 
     memset(&hvx_params, 0, sizeof(hvx_params));
 
-    hvx_params.handle   = p_tc_service->char_handles.value_handle;
+    hvx_params.handle   = p_tcs->char_handles.value_handle;
     hvx_params.type     = BLE_GATT_HVX_NOTIFICATION;
     hvx_params.offset   = 0;
     hvx_params.p_len    = &tc_packet_length;
     hvx_params.p_data   = p_tc_packet;
 
-    err_code = sd_ble_gatts_hvx(p_tc_service->conn_handle, &hvx_params);
+    err_code = sd_ble_gatts_hvx(p_tcs->conn_handle, &hvx_params);
     if (err_code == NRF_ERROR_RESOURCES)
     {
         m_nrf_error_resources = true;
@@ -71,18 +68,24 @@ static ret_code_t ble_tc_service_send_packet(ble_tc_service_t* p_tc_service, uin
 }
 
 
-static ret_code_t push_data_packets()
+/**@brief Function for pushing the Thermocouple data.
+ *
+ * @details The application calls this function when the thermcouple value should be updated.
+ *          The data will be split in packets of 20 bytes and send to the client.
+ *       
+ * @param[in]   p_tcs           Thermocouple Service structure.
+ * 
+ * @return      NRF_SUCCESS on success, otherwise an error code.
+ */
+static ret_code_t push_data_packets(ble_tcs_t* p_tcs)
 {
     ret_code_t err_code = NRF_SUCCESS;
     uint32_t packet_length = TC_MAX_PACKET_LENGTH;
     uint32_t packet_size = 0;
-    int count = 0;
 
     while(err_code == NRF_SUCCESS)
     {
-        //NRF_LOG_INFO("%d", count);
-
-        if ((m_tc_data_size - m_tc_data_pos) > packet_length)
+        if ((m_tc_data_size - m_tc_data_pos) >= packet_length)
         {
             packet_size = packet_length;
         }
@@ -93,7 +96,7 @@ static ret_code_t push_data_packets()
 
         if (packet_size > 0)
         {
-            err_code = ble_tc_service_send_packet(m_tc_service, &m_tc_data[m_tc_data_pos], packet_size);
+            err_code = ble_tcs_send_packet(p_tcs, &m_tc_data[m_tc_data_pos], packet_size);
             if (err_code == NRF_SUCCESS)
             {
                 m_tc_data_pos += packet_size;
@@ -106,37 +109,43 @@ static ret_code_t push_data_packets()
         }
         else
         {
+            NRF_LOG_INFO("Data send successful")
             m_tc_data_size = 0;
             m_tc_data_pos = 0;
-            memset(&m_tc_data, 0, sizeof(m_tc_data));
             break;
         }
-
-        count++;
     }
     return err_code;
 }
 
 
-ret_code_t ble_tc_service_send_data(ble_tc_service_t* p_tc_service, uint8_t* p_tc_data, uint16_t tc_data_length)
+/**@brief Function for updating the thermocouple value.
+ *
+ * @details The application calls this function when the thermcouple value should be updated. If
+ *          notification has been enabled, the thermocouple value characteristic is sent to the client.
+ *       
+ * @param[in]   p_tcs           Thermocouple Service structure.
+ * @param[in]   p_tc_data       Thermocouple data to send.
+ * @param[in]   tc_data_length  Thermocouple data length.
+ *
+ * @return      NRF_SUCCESS on success, otherwise an error code.
+ */
+ret_code_t ble_tcs_thermocouple_level_update(ble_tcs_t* p_tcs, uint8_t* p_tc_data, uint16_t tc_data_length)
 {   
     ret_code_t err_code;
 
-    if (p_tc_service == NULL)
-    {
-        return NRF_ERROR_NULL;
-    }
+    VERIFY_PARAM_NOT_NULL(p_tcs);
+    VERIFY_PARAM_NOT_NULL(p_tc_data);
 
-    if (p_tc_service->conn_handle == BLE_CONN_HANDLE_INVALID)
+    if (p_tcs->conn_handle == BLE_CONN_HANDLE_INVALID)
     {
         return NRF_ERROR_INVALID_STATE;
     }
 
     m_tc_data_size = tc_data_length;
     m_tc_data = p_tc_data;
-    m_tc_service = p_tc_service;
 
-    err_code = push_data_packets();
+    err_code = push_data_packets(p_tcs);
     if (err_code == NRF_ERROR_RESOURCES) return NRF_SUCCESS;
     return err_code;
 }
@@ -144,58 +153,58 @@ ret_code_t ble_tc_service_send_data(ble_tc_service_t* p_tc_service, uint8_t* p_t
 
 /**@brief Function for handling the Connect event.
  *
- * @param[in]   p_cus       Custom Service structure.
+ * @param[in]   p_tcs       Thermocouple Service structure.
  * @param[in]   p_ble_evt   Event received from the BLE stack.
  */
-static void on_connect(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
+static void on_connect(ble_tcs_t* p_tcs, ble_evt_t const* p_ble_evt)
 {
-    p_tc_service->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+    p_tcs->conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
 
-    ble_tc_service_evt_t evt;
-    evt.evt_type = BLE_TC_SERVICE_EVT_CONNECTED;
-    p_tc_service->evt_handler(p_tc_service, &evt);
+    ble_tcs_evt_t evt;
+    evt.evt_type = BLE_TCS_EVT_CONNECTED;
+    p_tcs->evt_handler(p_tcs, &evt);
 }
 
 
 /**@brief Function for handling the Disconnect event.
  *
- * @param[in]   p_cus       Custom Service structure.
+ * @param[in]   p_tcs       Thermocouple Service structure.
  * @param[in]   p_ble_evt   Event received from the BLE stack.
  */
-static void on_disconnect(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
+static void on_disconnect(ble_tcs_t* p_tcs, ble_evt_t const* p_ble_evt)
 {
     UNUSED_PARAMETER(p_ble_evt);
-    p_tc_service->conn_handle = BLE_CONN_HANDLE_INVALID;
+    p_tcs->conn_handle = BLE_CONN_HANDLE_INVALID;
 
-    ble_tc_service_evt_t evt;
-    evt.evt_type = BLE_TC_SERVICE_EVT_DISCONNECTED;
-    p_tc_service->evt_handler(p_tc_service, &evt);
+    ble_tcs_evt_t evt;
+    evt.evt_type = BLE_TCS_EVT_DISCONNECTED;
+    p_tcs->evt_handler(p_tcs, &evt);
 }
 
 
 /**@brief Function for handling write events to the TC characteristic.
  *
- * @param[in]   p_tc_service    TC structure.
+ * @param[in]   p_tcs           Thermocouple Service structure.
  * @param[in]   p_evt_write     Write event received from the BLE stack.
  */
-static void on_tc_cccd_write(ble_tc_service_t* p_tc_service, ble_gatts_evt_write_t const* p_evt_write)
+static void on_tc_cccd_write(ble_tcs_t* p_tcs, ble_gatts_evt_write_t const* p_evt_write)
 {
     if (p_evt_write->len == 2)
     {
-        if (p_tc_service->evt_handler != NULL)
+        if (p_tcs->evt_handler != NULL)
         {
-            ble_tc_service_evt_t evt;
+            ble_tcs_evt_t evt;
 
             if (ble_srv_is_notification_enabled(p_evt_write->data))
             {
-                evt.evt_type = BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED;
+                evt.evt_type = BLE_TCS_EVT_NOTIFICATION_ENABLED;
             }
             else
             {
-                evt.evt_type = BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED;
+                evt.evt_type = BLE_TCS_EVT_NOTIFICATION_DISABLED;
             }
             // Call the application event handler.
-            p_tc_service->evt_handler(p_tc_service, &evt);
+            p_tcs->evt_handler(p_tcs, &evt);
         }
     }
 }
@@ -203,14 +212,14 @@ static void on_tc_cccd_write(ble_tc_service_t* p_tc_service, ble_gatts_evt_write
 
 /**@brief Function for handling the Write event.
  *
- * @param[in]   p_tc_service    TC structure.
+ * @param[in]   p_tcs           Thermocouple Service structure.
  * @param[in]   p_ble_evt       Event received from the BLE stack.
  */
-static void on_write(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
+static void on_write(ble_tcs_t* p_tcs, ble_evt_t const* p_ble_evt)
 {
     ble_gatts_evt_write_t const* p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
 
-    if (p_evt_write->handle == p_tc_service->char_handles.value_handle)
+    if (p_evt_write->handle == p_tcs->char_handles.value_handle)
     {
         if (*p_evt_write->data == 0x30)
         {
@@ -223,50 +232,48 @@ static void on_write(ble_tc_service_t* p_tc_service, ble_evt_t const* p_ble_evt)
     }
 
     // Check if the tc value CCCD is written to.
-    if (p_evt_write->handle == p_tc_service->char_handles.cccd_handle)
+    if (p_evt_write->handle == p_tcs->char_handles.cccd_handle)
     {
-        on_tc_cccd_write(p_tc_service, p_evt_write);
+        on_tc_cccd_write(p_tcs, p_evt_write);
     }
 }
 
 
 /**@brief Function for handling the Application's BLE Stack events.
  *
- * @details Handles all events from the BLE stack of interest to the Battery Service.
+ * @details Handles all events from the BLE stack of interest to the Thermocouple Service.
  *
  * @param[in]   p_ble_evt  Event received from the BLE stack.
- * @param[in]   p_context  Custom Service structure.
+ * @param[in]   p_context  Thermocouple Service structure.
  */
-void ble_tc_service_on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context)
+void ble_tcs_on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context)
 {
-    ble_tc_service_t* p_tc_service = (ble_tc_service_t*) p_context;
+    ble_tcs_t* p_tcs = (ble_tcs_t*) p_context;
 
-    if (p_tc_service == NULL || p_ble_evt == NULL)
+    if (p_tcs == NULL || p_ble_evt == NULL)
     {
-        NRF_LOG_ERROR("ERROR BLE EVENT: input parameter = NULL")
         return;
     }
 
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_CONNECTED:
-            on_connect(p_tc_service, p_ble_evt);
+            on_connect(p_tcs, p_ble_evt);
             break;
 
         case BLE_GAP_EVT_DISCONNECTED:
-            on_disconnect(p_tc_service, p_ble_evt);
+            on_disconnect(p_tcs, p_ble_evt);
             break;
 
         case BLE_GATTS_EVT_WRITE:
-            on_write(p_tc_service, p_ble_evt);
+            on_write(p_tcs, p_ble_evt);
             break;
-
+        
         case BLE_GATTS_EVT_HVN_TX_COMPLETE:
             {
-                //NRF_LOG_INFO("BLE_GATTS_EVT_HVN_TX_COMPLETE");
                 if (m_tc_data_size > 0)
                 {
-                    push_data_packets();
+                    push_data_packets(p_tcs);
                 }
                 m_nrf_error_resources = false;
             }
@@ -280,12 +287,12 @@ void ble_tc_service_on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context)
 
 /**@brief Function for adding the TC Value characteristic.
  *
- * @param[in]   p_tc_service        TC Service structure.
- * @param[in]   p_tc_service_init   Information needed to initialize the service.
+ * @param[in]   p_tcs        TC Service structure.
+ * @param[in]   p_tcs_init   Information needed to initialize the service.
  *
  * @return      NRF_SUCCESS on success, otherwise an error code.
  */
-static ret_code_t tc_char_add(ble_tc_service_t* p_tc_service, const ble_tc_service_init_t* p_tc_service_init)
+static ret_code_t tc_char_add(ble_tcs_t* p_tcs, const ble_tcs_init_t* p_tcs_init)
 {
     ret_code_t          err_code;
     ble_gatts_char_md_t char_md;
@@ -317,16 +324,16 @@ static ret_code_t tc_char_add(ble_tc_service_t* p_tc_service, const ble_tc_servi
     // Populate attr_md
     memset(&attr_md, 0, sizeof(attr_md));
 
-    attr_md.read_perm   = p_tc_service_init->tc_value_char_attr_md.read_perm;
-    attr_md.write_perm  = p_tc_service_init->tc_value_char_attr_md.write_perm;
+    attr_md.read_perm   = p_tcs_init->tc_value_char_attr_md.read_perm;
+    attr_md.write_perm  = p_tcs_init->tc_value_char_attr_md.write_perm;
     attr_md.vloc        = BLE_GATTS_VLOC_STACK;
     attr_md.rd_auth     = 0;
     attr_md.wr_auth     = 0;
-    attr_md.vlen        = 0;
+    attr_md.vlen        = 1;
 
     // Populate char_uuid
-    char_uuid.type = p_tc_service->uuid_type;
-    char_uuid.uuid = BLE_UUID_TC_CHAR;
+    char_uuid.type = p_tcs->uuid_type;
+    char_uuid.uuid = BLE_UUID_THERMOCOUPLE_CHAR;
 
     // Populate attr_char_value
     memset(&attr_char_value, 0, sizeof(attr_char_value));
@@ -338,10 +345,10 @@ static ret_code_t tc_char_add(ble_tc_service_t* p_tc_service, const ble_tc_servi
     attr_char_value.init_offs   = 0;
 
     // Add characteristic
-    err_code = sd_ble_gatts_characteristic_add(p_tc_service->service_handle,
+    err_code = sd_ble_gatts_characteristic_add(p_tcs->service_handle,
                                                &char_md,
                                                &attr_char_value,
-                                               &p_tc_service->char_handles);
+                                               &p_tcs->char_handles);
     VERIFY_SUCCESS(err_code);
 
     return err_code;
@@ -350,42 +357,39 @@ static ret_code_t tc_char_add(ble_tc_service_t* p_tc_service, const ble_tc_servi
 
 /**@brief Function for initializing the TC Service.
  *
- * @param[out]  p_tc_service        TC Service structure. This structure will have to be supplied by
- *                                  the application. It will be initialized by this function, and will later
- *                                  be used to identify this particular service instance.
- * @param[in]   p_tc_service_init   Information needed to initialize the service.
+ * @param[out]  p_tcs        TC Service structure. This structure will have to be supplied by
+ *                           the application. It will be initialized by this function, and will later
+ *                           be used to identify this particular service instance.
+ * @param[in]   p_tcs_init   Information needed to initialize the service.
  *
  * @return      NRF_SUCCESS on successful initialization of service, otherwise an error code.
  */
-ret_code_t ble_tc_service_init(ble_tc_service_t* p_tc_service, const ble_tc_service_init_t* p_tc_service_init)
+ret_code_t ble_tcs_init(ble_tcs_t* p_tcs, const ble_tcs_init_t* p_tcs_init)
 {
-    if (p_tc_service == NULL || p_tc_service_init == NULL)
-    {
-        NRF_LOG_ERROR("ERROR BLE INIT: input parameter = NULL")
-        return NRF_ERROR_NULL;
-    }
-
     ret_code_t  err_code;
     ble_uuid_t  service_uuid;
 
+    VERIFY_PARAM_NOT_NULL(p_tcs);
+    VERIFY_PARAM_NOT_NULL(p_tcs_init);
+
     // Initialize service structure
-    p_tc_service->evt_handler       = p_tc_service_init->evt_handler;
-    p_tc_service->conn_handle       = BLE_CONN_HANDLE_INVALID;
+    p_tcs->evt_handler       = p_tcs_init->evt_handler;
+    p_tcs->conn_handle       = BLE_CONN_HANDLE_INVALID;
 
     // Add service UUID
-    ble_uuid128_t base_uuid = {BLE_UUID_TC_SERVICE_BASE};
-    err_code = sd_ble_uuid_vs_add(&base_uuid, &p_tc_service->uuid_type);
+    ble_uuid128_t base_uuid = {BLE_UUID_THERMOCOUPLE_SERVICE_BASE};
+    err_code = sd_ble_uuid_vs_add(&base_uuid, &p_tcs->uuid_type);
     VERIFY_SUCCESS(err_code);
 
-    service_uuid.type = p_tc_service->uuid_type;
-    service_uuid.uuid = BLE_UUID_TC_SERVICE;
+    service_uuid.type = p_tcs->uuid_type;
+    service_uuid.uuid = BLE_UUID_THERMOCOUPLE_SERVICE;
 
     // Add service to BLE Stack's GATT table
     err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, 
                                         &service_uuid, 
-                                        &p_tc_service->service_handle);
+                                        &p_tcs->service_handle);
     VERIFY_SUCCESS(err_code);
 
     // Add tc characteristic
-    return tc_char_add(p_tc_service, p_tc_service_init);
+    return tc_char_add(p_tcs, p_tcs_init);
 }

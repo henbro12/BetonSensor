@@ -79,7 +79,7 @@
 
 #include "ble_bas.h"
 #include "ble_dis.h"
-#include "ble_tc_service.h"
+#include "ble_tcs.h"
 
 #include "battery_voltage.h"
 
@@ -92,7 +92,7 @@
 #define DEVICE_NAME_LEN                 strlen(DEVICE_NAME)                     /**< Name length of device. Will define the length of the advertising data. */
 
 #define MANUFACTURER_NAME               "ProwareTechnologies"                   /**< Manufacturer. Will be passed to Device Information Service. */
-#define SERIAL_NUM                      "1234"                                  /**< Serial Number. Will be passed to Device Information Service. */
+#define SERIAL_NUM                      "1234567890"                            /**< Serial Number. Will be passed to Device Information Service. */
 #define HARDWARE_REV                    "1.0"                                   /**< Hardware revision. Will be passed to Device Information Service. */
 #define FIRMAWARE_REV                   "1.0"                                   /**< Firmware revision. Will be passed to Device Information Service. */
 #define SOFTWARE_REV                    "1.0"                                   /**< Software revision. Will be passed to Device Information Service. */
@@ -123,14 +123,46 @@
 
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
+
+uint8_t m_tc_data[510] = {
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+    1,2,3,4,5,6,7,8,9,255
+};
+
+
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
 
 BLE_BAS_DEF(m_bas);
-BLE_TC_SERVICE_DEF(m_tc_service);
+BLE_TCS_DEF(m_tcs);
 
-bool notify_enabled = false;
+bool tcs_update_flag = false;
+bool bas_update_flag = false;
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
@@ -138,7 +170,7 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
 static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
 {
-    {BLE_UUID_TC_SERVICE, BLE_UUID_TYPE_VENDOR_BEGIN},
+    {BLE_UUID_THERMOCOUPLE_SERVICE, BLE_UUID_TYPE_VENDOR_BEGIN},
     {BLE_UUID_BATTERY_SERVICE, BLE_UUID_TYPE_BLE},
     {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}
 };
@@ -194,16 +226,6 @@ static void timers_init(void)
     // Initialize timer module.
     ret_code_t err_code = app_timer_init();
     APP_ERROR_CHECK(err_code);
-
-    // Create timers.
-
-    /* YOUR_JOB: Create any timers to be used by the application.
-                 Below is an example of how to create a timer.
-                 For every new timer needed, increase the value of the macro APP_TIMER_MAX_TIMERS by
-                 one.
-       ret_code_t err_code;
-       err_code = app_timer_create(&m_app_timer_id, APP_TIMER_MODE_REPEATED, timer_timeout_handler);
-       APP_ERROR_CHECK(err_code); */
 }
 
 
@@ -290,35 +312,56 @@ static void battery_level_update(void)
 }
 
 
+/**@brief Function for performing thermocouple measurement and updating the Thermocouple characteristic
+ *        in Thermocouple Service.
+ */
+static void thermocouple_level_update(void)
+{
+    ret_code_t err_code;
+
+    NRF_LOG_INFO("Sending Thermocouple data...");
+
+    err_code = ble_tcs_thermocouple_level_update(&m_tcs, m_tc_data, sizeof(m_tc_data));
+    if ((err_code != NRF_SUCCESS) &&
+        (err_code != NRF_ERROR_INVALID_STATE) &&
+        (err_code != NRF_ERROR_RESOURCES) &&
+        (err_code != NRF_ERROR_BUSY) &&
+        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
+    {
+        APP_ERROR_HANDLER(err_code);
+    }    
+}
+
+
 /**@brief Function for handling the TC Service events.
  * @details This function will be called for all TC Service events which are passed to
  *          the application.
  *
- * @param[in]   p_tc_service   TC Service structure.
+ * @param[in]   p_tcs   TC Service structure.
  * @param[in]   p_evt          Event received from the TC Service.
  *
  */
-static void on_tc_service_evt(ble_tc_service_t* p_tc_service,
-                              ble_tc_service_evt_t* p_evt)
+static void on_tcs_evt(ble_tcs_t* p_tcs,
+                       ble_tcs_evt_t* p_evt)
 {
     switch (p_evt->evt_type)
     {
-        case BLE_TC_SERVICE_EVT_CONNECTED:
-            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_CONNECTED");
+        case BLE_TCS_EVT_CONNECTED:
+            NRF_LOG_INFO("BLE_TCS_EVT_CONNECTED");
             break;
         
-        case BLE_TC_SERVICE_EVT_DISCONNECTED:
-            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_DISCONNECTED");
+        case BLE_TCS_EVT_DISCONNECTED:
+            NRF_LOG_INFO("BLE_TCS_EVT_DISCONNECTED");
             break;
 
-        case BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED:
-            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_NOTIFICATION_ENABLED\r\n");
-            notify_enabled = true;
+        case BLE_TCS_EVT_NOTIFICATION_ENABLED:
+            NRF_LOG_INFO("BLE_TCS_EVT_NOTIFICATION_ENABLED\r\n");
+            tcs_update_flag = true;
             break;
         
-        case BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED:
-            NRF_LOG_INFO("BLE_TC_SERVICE_EVT_NOTIFICATION_DISABLED\r\n");
-            notify_enabled = false;
+        case BLE_TCS_EVT_NOTIFICATION_DISABLED:
+            NRF_LOG_INFO("BLE_TCS_EVT_NOTIFICATION_DISABLED\r\n");
+            tcs_update_flag = false;
             break;
 
         default:
@@ -334,7 +377,7 @@ static void services_init(void)
 {
     ret_code_t              err_code;
     nrf_ble_qwr_init_t      qwr_init         = {0};
-    ble_tc_service_init_t   tc_service_init  = {0};
+    ble_tcs_init_t          tcs_init  = {0};
     ble_dis_init_t          dis_init         = {0};
     ble_bas_init_t          bas_init         = {0};
 
@@ -346,16 +389,16 @@ static void services_init(void)
 
 
     // Initialize Thermocouple Service.
-    memset(&tc_service_init, 0, sizeof(tc_service_init));
+    memset(&tcs_init, 0, sizeof(tcs_init));
 
     // Set peer permissions for tc service
-    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tc_service_init.tc_value_char_attr_md.read_perm);
-    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tc_service_init.tc_value_char_attr_md.write_perm);
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tcs_init.tc_value_char_attr_md.read_perm);
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&tcs_init.tc_value_char_attr_md.write_perm);
 
     // Set the TC event handler
-    tc_service_init.evt_handler = on_tc_service_evt;
+    tcs_init.evt_handler = on_tcs_evt;
 
-    err_code = ble_tc_service_init(&m_tc_service, &tc_service_init);
+    err_code = ble_tcs_init(&m_tcs, &tcs_init);
     APP_ERROR_CHECK(err_code);
 
 
@@ -446,30 +489,6 @@ static void conn_params_init(void)
 }
 
 
-/**@brief Function for starting timers.
- */
-static void application_timers_start(void)
-{
-    /* YOUR_JOB: Start your timers. below is an example of how to start a timer.
-       ret_code_t err_code;
-       err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
-       APP_ERROR_CHECK(err_code); */
-
-}
-
-
-/**@brief Function for putting the chip into sleep mode.
- *
- * @note This function will not return.
- */
-// static void sleep_mode_enter(void)
-// {
-//     ret_code_t err_code;
-//     err_code = sd_power_system_off();
-//     APP_ERROR_CHECK(err_code);
-// }
-
-
 /**@brief Function for handling advertising events.
  *
  * @details This function will be called for advertising events which are passed to the application.
@@ -518,10 +537,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
 
-            if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
-            {
-                battery_level_update();
-            }
+            bas_update_flag = true;
             break;
 
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
@@ -711,6 +727,16 @@ static void idle_state_handle(void)
     }
 }
 
+/**@brief Function for putting the chip into sleep mode.
+ *
+ * @note This function will not return.
+ */
+// static void sleep_mode_enter(void)
+// {
+//     ret_code_t err_code;
+//     err_code = sd_power_system_off();
+//     APP_ERROR_CHECK(err_code);
+// }
 
 /**@brief Function for starting advertising.
  */
@@ -727,7 +753,6 @@ static void advertising_start(bool erase_bonds)
         APP_ERROR_CHECK(err_code);
     }
 }
-
 
 /**@brief Function for application main entry.
  */
@@ -752,7 +777,6 @@ int main(void)
     // Start execution.
     NRF_LOG_INFO("*****************************************************\r\n\n");
     NRF_LOG_INFO("Template example started.\r\n");
-    application_timers_start();
 
     advertising_start(erase_bonds);
 
@@ -763,47 +787,19 @@ int main(void)
     {
         idle_state_handle();
 
-        if (notify_enabled)
+        if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
         {
-            ret_code_t err_code;
-            uint8_t tc_data[500] = {
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-                1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,255
-            };
-
-            err_code = ble_tc_service_send_data(&m_tc_service, tc_data, sizeof(tc_data));
-            if ((err_code != NRF_SUCCESS) &&
-                (err_code != NRF_ERROR_INVALID_STATE) &&
-                (err_code != NRF_ERROR_RESOURCES) &&
-                (err_code != NRF_ERROR_BUSY) &&
-                (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
+            if (bas_update_flag)
             {
-                APP_ERROR_HANDLER(err_code);
+                battery_level_update();
+                bas_update_flag = false;
             }
-            notify_enabled = false;
+
+            if (tcs_update_flag)
+            {
+                thermocouple_level_update();
+                tcs_update_flag = false;
+            }
         }
     }
 }

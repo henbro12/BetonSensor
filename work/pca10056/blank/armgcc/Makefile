@@ -87,8 +87,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/ble/ble_services/ble_dis/ble_dis.c \
   $(SDK_ROOT)/components/ble/ble_services/ble_bas/ble_bas.c \
   $(PROJ_DIR)/main.c \
-  $(PROJ_DIR)/source/timer.c \
-  $(PROJ_DIR)/source/ble_tc_service.c \
+  $(PROJ_DIR)/source/ble_tcs.c \
   $(PROJ_DIR)/source/battery_voltage.c \
 
 
