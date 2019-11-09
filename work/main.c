@@ -15,7 +15,6 @@
 #include "boards.h"
 #include "sdk_errors.h"
 #include "nrf_drv_clock.h"
-#include "timer.h"
 
 
 /**
@@ -42,10 +41,6 @@ int main(void)
     bsp_board_init(BSP_INIT_LEDS);
 
     bsp_board_leds_on();
-
-    timer_init();
-
-    timer_start();
 
     while (true)
     {
