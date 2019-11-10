@@ -129,8 +129,10 @@
 
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
+
 #define SIZE_OF_FLOAT   4
 
+#define TC_TIMER_INTERVAL               20000                                   /**< The thermocouple timer interval (in units of ms). */
 #define SPI_INSTANCE    0
 
 #define FILE_ID_FDS     0x3185
@@ -162,6 +164,8 @@ union
     float float_val;
     unsigned char bytes_val[SIZE_OF_FLOAT];
 } floatAsBytes;
+
+uint8_t m_tc_buffer[MAX_RECORDS * RECORD_SIZE] = {0};
 
 // uint8_t m_tc_data[510] = {
 //     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
@@ -228,7 +232,7 @@ float bytes2float(unsigned char m_bytes[SIZE_OF_FLOAT])
  */
 static void max31856_int_handler(void)
 {
-    bsp_board_leds_on();
+    bsp_board_led_on(BSP_BOARD_LED_2);
         
     max31856_checkFaultStatus();
 
@@ -254,7 +258,7 @@ static void max31856_int_handler(void)
         NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
     }
 
-    bsp_board_leds_off();
+    bsp_board_led_off(BSP_BOARD_LED_2);
 } 
 
 
@@ -268,14 +272,16 @@ void read_records()
     static uint8_t read_data[MAX_RECORDS][RECORD_SIZE] = {0};
     APP_ERROR_CHECK(fds_read(FILE_ID_FDS, REC_KEY_FDS, read_data));
 
-    //int k = 0;
+    NRF_LOG_INFO("Number of records: %d", fds_getNumberOfRecords());
+
+    int k = 0;
     for (int i = 0; i < fds_getNumberOfRecords(); i++)
     {
-        //for (int j = 0; j < RECORD_SIZE; j++)
-        //{
-        //    p_tc_buffer[k] = read_data[i][j];
-        //    k++;
-        //}
+        for (int j = 0; j < RECORD_SIZE; j++)
+        {
+            m_tc_buffer[k] = read_data[i][j];
+            k++;
+        }
         float coldJunctionTemperature = bytes2float(read_data[i]);
         NRF_LOG_INFO("Record %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i + 1, NRF_LOG_FLOAT(coldJunctionTemperature));
     }
@@ -411,14 +417,13 @@ static void battery_level_update(void)
 static void thermocouple_level_update(void)
 {
     ret_code_t err_code;
-    uint8_t tc_data[MAX_RECORDS * RECORD_SIZE] = {0};
 
     NRF_LOG_INFO("Reading thermocouple data log from FDS")
-    read_records(tc_data);
+    read_records();
 
     NRF_LOG_INFO("Sending Thermocouple data...");
 
-    err_code = ble_tcs_thermocouple_level_update(&m_tcs, tc_data, (fds_getNumberOfRecords() * RECORD_SIZE));
+    err_code = ble_tcs_thermocouple_level_update(&m_tcs, m_tc_buffer, (fds_getNumberOfRecords() * RECORD_SIZE));
     if ((err_code != NRF_SUCCESS) &&
         (err_code != NRF_ERROR_INVALID_STATE) &&
         (err_code != NRF_ERROR_RESOURCES) &&
@@ -828,7 +833,7 @@ static void idle_state_handle(void)
 {
     if (NRF_LOG_PROCESS() == false)
     {
-        power_manage();
+        //power_manage();
         nrf_pwr_mgmt_run();
     }
 }
@@ -889,20 +894,18 @@ int main(void)
 
     spi_init(&spi);
     max31856_init(&spi);
+    
     APP_ERROR_CHECK(fds_storage_init());
-    APP_ERROR_CHECK(fds_find_and_delete(FILE_ID_FDS, REC_KEY_FDS));
+    fds_find_and_delete(FILE_ID_FDS, REC_KEY_FDS);
 
-    nrf_delay_ms(1000);
-
-    read_records();
-    timer_start(10000);
+    timer_start(TC_TIMER_INTERVAL);
 
     advertising_start(erase_bonds);
     //sleep_mode_enter();
 
-    bsp_board_leds_on();
+    NRF_LOG_INFO("\r\n\n\n\t*** STARTING APPLICATION ***\r\n")
+    NRF_LOG_INFO("Running application with Thermocouple timer interval of %dms", TC_TIMER_INTERVAL);
 
-    // Enter main loop.
     while (true)
     {
         idle_state_handle();
@@ -913,14 +916,12 @@ int main(void)
             {
                 battery_level_update();
                 bas_update_flag = false;
-                nrf_delay_ms(500);
             }
 
             if (tcs_update_flag)
             {
                 thermocouple_level_update();
                 tcs_update_flag = false;
-                nrf_delay_ms(500);
             }
         }
 
@@ -928,7 +929,6 @@ int main(void)
         {
             max31856_int_handler();
             timer_setIntFlag(false);
-            nrf_delay_ms(500);
         }
     }
 }

@@ -11,6 +11,10 @@
 static volatile bool m_fds_write_flag = false; 
 static volatile uint16_t m_number_of_records = 0;
 
+static volatile uint32_t m_read_file_id = 0;
+static volatile uint32_t m_read_record_key = 0;
+
+static volatile bool m_fds_err_no_space_in_queues = false;
 
 /**
  * @brief   Event handler for the FDS.
@@ -25,15 +29,38 @@ static void fds_evt_handler(fds_evt_t const* p_fds_evt)
                 NRF_LOG_ERROR("FDS initialization failed")
             }
             break;
+
         case FDS_EVT_WRITE:
             if (p_fds_evt->result == FDS_SUCCESS)
             {
                 fds_setWriteFlag(true);
             }
             break;
+
+        case FDS_EVT_DEL_RECORD:
+            if (m_number_of_records != 0)
+            {
+                fds_find_and_delete(m_read_file_id, m_read_record_key);
+            }
+            m_fds_err_no_space_in_queues = false;
+            break;
+
         default:
             break;
     }
+}
+
+
+/** 
+ * @brief Function for running the garbage collector
+ * 
+ * @return      NRF_SUCCESS if successful, else error code
+ */
+static ret_code_t fds_garbage_collector()
+{
+    // call the garbage collector to empty them, don't need to do this all the time, this is just for demonstration
+    ret_code_t err_code = fds_gc();
+    return (err_code != FDS_SUCCESS) ? err_code : NRF_SUCCESS;
 }
 
 
@@ -89,7 +116,7 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
     uint8_t*    data;
     uint32_t    err_code;
 
-    //NRF_LOG_INFO("Start searching...\r\n");
+    m_number_of_records = 0;
 
     // Loop until all records with the given key and file ID have been found
     while (fds_record_find(read_file_id, read_record_key, &record_desc, &ftok) == FDS_SUCCESS)
@@ -100,7 +127,7 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
             return err_code;
         }
 
-        NRF_LOG_INFO("Found Record ID = %d\r\n", record_desc.record_id);
+        //NRF_LOG_INFO("Found Record ID = %d", record_desc.record_id);
         data = (uint8_t*) flash_record.p_data;
         for (uint8_t i=0;i<flash_record.p_header->length_words;i++)
 		{
@@ -128,26 +155,43 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
  */
 ret_code_t fds_find_and_delete(uint32_t read_file_id, uint32_t read_record_key)
 {
+    m_read_file_id = read_file_id;
+    m_read_record_key = read_record_key;
+    m_number_of_records = 0;
+
+    ret_code_t err_code = FDS_SUCCESS;
+    ret_code_t ret_code;
+
     fds_record_desc_t   record_desc;
     fds_find_token_t    ftok;
 
     ftok.page   = 0;
     ftok.p_addr = NULL;
 
-    // Loop and find records with same ID and rec key and mark them as deleted
-    while (fds_record_find(read_file_id, read_record_key, &record_desc, &ftok) == FDS_SUCCESS)
+    if (m_fds_err_no_space_in_queues)
     {
-        fds_record_delete(&record_desc);
-        NRF_LOG_INFO("Deleted Record ID = %d\r\n", record_desc.record_id);
+        return FDS_ERR_NO_SPACE_IN_QUEUES;
     }
 
-    // call the garbage collector to empty them, don't need to do this all the time, this is just for demonstration
-    ret_code_t ret = fds_gc();
-    if (ret != FDS_SUCCESS)
+    // Loop and find records with same ID and rec key and mark them as deleted
+    while ((ret_code = fds_record_find(read_file_id, read_record_key, &record_desc, &ftok)) == FDS_SUCCESS)
     {
-        return ret;
+        err_code = fds_record_delete(&record_desc);
+        if (err_code != FDS_SUCCESS)
+        {
+            m_fds_err_no_space_in_queues = true;
+            break;
+        }
+        m_number_of_records++;
     }
-    return NRF_SUCCESS;
+
+    if (ret_code == FDS_ERR_NOT_FOUND && m_number_of_records == 0)
+    {
+        NRF_LOG_INFO("Deleted all records with file id 0x%x and record key 0x%x\r\n", read_file_id, read_record_key);
+        return fds_garbage_collector();
+    }
+
+    return (err_code != FDS_SUCCESS) ? err_code : NRF_SUCCESS;
 }
 
 
