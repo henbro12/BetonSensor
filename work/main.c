@@ -75,6 +75,7 @@
 #include "nrf_ble_gatt.h"
 #include "nrf_ble_qwr.h"
 #include "nrf_pwr_mgmt.h"
+#include "nrf_drv_clock.h"
 #include "boards.h"
 
 #include "ble_bas.h"
@@ -82,6 +83,11 @@
 #include "ble_tcs.h"
 
 #include "battery_voltage.h"
+#include "max31856.h"
+#include "timer.h"
+#include "storage.h"
+
+#include "nrf_delay.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -123,36 +129,12 @@
 
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
+#define SIZE_OF_FLOAT   4
 
-uint8_t m_tc_data[510] = {
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-    1,2,3,4,5,6,7,8,9,255
-};
+#define SPI_INSTANCE    0
 
+#define FILE_ID_FDS     0x3185
+#define REC_KEY_FDS     0x0001
 
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
@@ -164,10 +146,10 @@ BLE_TCS_DEF(m_tcs);
 bool tcs_update_flag = false;
 bool bas_update_flag = false;
 
+
+static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
-
-// YOUR_JOB: Use UUIDs for service(s) used in your application.
 static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
 {
     {BLE_UUID_THERMOCOUPLE_SERVICE, BLE_UUID_TYPE_VENDOR_BEGIN},
@@ -175,8 +157,131 @@ static ble_uuid_t m_adv_uuids[] =                                               
     {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}
 };
 
+union
+{
+    float float_val;
+    unsigned char bytes_val[SIZE_OF_FLOAT];
+} floatAsBytes;
+
+// uint8_t m_tc_data[510] = {
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+//     1,2,3,4,5,6,7,8,9,255
+// };
 
 static void advertising_start(bool erase_bonds);
+
+
+/**
+ * @brief Function for converting a float to bytes
+ * 
+ * @param[in] m_float    Float to be converted to bytes
+ * 
+ * @return  Bytes that form a float value
+ */
+unsigned char* float2bytes(float m_float)
+{
+    floatAsBytes.float_val = m_float;
+    return floatAsBytes.bytes_val;
+}
+
+
+/**
+ * @brief Function for converting bytes to a float
+ * 
+ * @param[in] m_bytes    Bytes that form a float (4 bytes)
+ * 
+ * @return  Float value
+ */
+float bytes2float(unsigned char m_bytes[SIZE_OF_FLOAT])
+{
+    memcpy(floatAsBytes.bytes_val, m_bytes, SIZE_OF_FLOAT);
+    return floatAsBytes.float_val;
+}
+
+
+/**
+ * @brief Function for handling the MAX31856 timer interrupt
+ */
+static void max31856_int_handler(void)
+{
+    bsp_board_leds_on();
+        
+    max31856_checkFaultStatus();
+
+    float coldJunctionTemperature = 0.0f;
+    unsigned char* coldJunctionTemperatureBytes;
+    
+    if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
+    {
+        NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C", NRF_LOG_FLOAT(coldJunctionTemperature));
+        coldJunctionTemperatureBytes = float2bytes(coldJunctionTemperature);
+        
+        if (coldJunctionTemperature != 0.0f) {
+            APP_ERROR_CHECK(fds_write(FILE_ID_FDS, REC_KEY_FDS, coldJunctionTemperatureBytes));
+            while (!fds_getWriteFlag());
+        }
+    }
+
+    nrf_delay_ms(500);
+
+    float thermocoupleTemperature = 0.0f;
+    if (max31856_getThermoCoupleTemperature(&thermocoupleTemperature) == MAX31856_SUCCESS)
+    {
+        NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
+    }
+
+    bsp_board_leds_off();
+} 
+
+
+/**
+ * @brief Function for reading the FDS records.
+ * 
+ * @param[out]  p_tc_buffer     Buffer to hold the thermocouple data.
+ */
+void read_records() 
+{
+    static uint8_t read_data[MAX_RECORDS][RECORD_SIZE] = {0};
+    APP_ERROR_CHECK(fds_read(FILE_ID_FDS, REC_KEY_FDS, read_data));
+
+    //int k = 0;
+    for (int i = 0; i < fds_getNumberOfRecords(); i++)
+    {
+        //for (int j = 0; j < RECORD_SIZE; j++)
+        //{
+        //    p_tc_buffer[k] = read_data[i][j];
+        //    k++;
+        //}
+        float coldJunctionTemperature = bytes2float(read_data[i]);
+        NRF_LOG_INFO("Record %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i + 1, NRF_LOG_FLOAT(coldJunctionTemperature));
+    }
+    NRF_LOG_INFO("\t*** END OF RECORDS ***\r\n");
+}
+
 
 
 /**@brief Callback function for asserts in the SoftDevice.
@@ -251,8 +356,8 @@ static void gap_params_init(void)
 }
 
 
-/**@brief Function for initializing the GATT module.
- */
+/**@brief Function for initializing the GATT module. 
+*/
 static void gatt_init(void)
 {
     ret_code_t err_code = nrf_ble_gatt_init(&m_gatt, NULL);
@@ -306,10 +411,14 @@ static void battery_level_update(void)
 static void thermocouple_level_update(void)
 {
     ret_code_t err_code;
+    uint8_t tc_data[MAX_RECORDS * RECORD_SIZE] = {0};
+
+    NRF_LOG_INFO("Reading thermocouple data log from FDS")
+    read_records(tc_data);
 
     NRF_LOG_INFO("Sending Thermocouple data...");
 
-    err_code = ble_tcs_thermocouple_level_update(&m_tcs, m_tc_data, sizeof(m_tc_data));
+    err_code = ble_tcs_thermocouple_level_update(&m_tcs, tc_data, (fds_getNumberOfRecords() * RECORD_SIZE));
     if ((err_code != NRF_SUCCESS) &&
         (err_code != NRF_ERROR_INVALID_STATE) &&
         (err_code != NRF_ERROR_RESOURCES) &&
@@ -692,15 +801,11 @@ static void log_init(void)
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-
-/**@brief Function for the Timer initialization.
- *
- * @details Initializes the timer module. This creates and starts application timers.
+/**@brief Function for setting the application in sleep mode.
  */
-static void timers_init(void)
+void power_manage( void )
 {
-    // Initialize timer module.
-    ret_code_t err_code = app_timer_init();
+    ret_code_t err_code = sd_app_evt_wait();
     APP_ERROR_CHECK(err_code);
 }
 
@@ -723,6 +828,7 @@ static void idle_state_handle(void)
 {
     if (NRF_LOG_PROCESS() == false)
     {
+        power_manage();
         nrf_pwr_mgmt_run();
     }
 }
@@ -765,7 +871,11 @@ int main(void)
 
     // Initialize.
     log_init();
-    timers_init();
+    NRF_LOG_INFO("*****************************************************\r\n\n");
+    NRF_LOG_INFO("\r\n\n\n\t*** CONCRETE SENSOR ***\r\n");
+    NRF_LOG_FLUSH();
+
+    timer_init();
     leds_init();
     battery_voltage_init();
     power_management_init();
@@ -777,16 +887,23 @@ int main(void)
     conn_params_init();
     peer_manager_init();
 
-    // Start execution.
-    NRF_LOG_INFO("*****************************************************\r\n\n");
-    NRF_LOG_INFO("Template example started.\r\n");
+    spi_init(&spi);
+    max31856_init(&spi);
+    APP_ERROR_CHECK(fds_storage_init());
+    APP_ERROR_CHECK(fds_find_and_delete(FILE_ID_FDS, REC_KEY_FDS));
+
+    nrf_delay_ms(1000);
+
+    read_records();
+    timer_start(10000);
 
     advertising_start(erase_bonds);
-
     //sleep_mode_enter();
 
+    bsp_board_leds_on();
+
     // Enter main loop.
-    for (;;)
+    while (true)
     {
         idle_state_handle();
 
@@ -796,13 +913,22 @@ int main(void)
             {
                 battery_level_update();
                 bas_update_flag = false;
+                nrf_delay_ms(500);
             }
 
             if (tcs_update_flag)
             {
                 thermocouple_level_update();
                 tcs_update_flag = false;
+                nrf_delay_ms(500);
             }
+        }
+
+        if (timer_getIntFlag())
+        {
+            max31856_int_handler();
+            timer_setIntFlag(false);
+            nrf_delay_ms(500);
         }
     }
 }

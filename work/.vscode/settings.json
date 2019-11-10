@@ -16,7 +16,9 @@
         "ble_dis.h": "c",
         "ble_bas.h": "c",
         "nrf_drv_saadc.h": "c",
-        "sdk_macros.h": "c"
+        "sdk_macros.h": "c",
+        "nrf_log_default_backends.h": "c",
+        "nrf_pwr_mgmt.h": "c"
     },
     "actionButtons": {
         "defaultColor": "white",

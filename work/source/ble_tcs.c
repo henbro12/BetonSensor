@@ -109,7 +109,7 @@ static ret_code_t push_data_packets(ble_tcs_t* p_tcs)
         }
         else
         {
-            NRF_LOG_INFO("Data send successful")
+            NRF_LOG_INFO("Data send successful\r\n")
             m_tc_data_size = 0;
             m_tc_data_pos = 0;
             break;
