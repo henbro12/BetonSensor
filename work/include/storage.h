@@ -2,8 +2,9 @@
 #ifndef _storage_H__
 #define _storage_H__
 
-#define TC_DATA_SIZE sizeof(float)      // Size of float (temperature)
-#define MAX_RECORDS 1024                // Equal to FDS_VIRTUAL_PAGES_SIZE
+#define TC_DATA_SIZE        sizeof(float)   // Size of float (temperature)
+#define MAX_RECORD_SIZE     144             // 1 day, every 10 minutes
+#define WORD                4               // Number of bytes in a word
 
 /** 
  * @brief Function for writing to the FDS
@@ -14,7 +15,7 @@
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data);
+ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data, const uint8_t data_length);
 
 
 /** 
@@ -26,7 +27,7 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[TC_DATA_SIZE]);
+ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[MAX_RECORD_SIZE * TC_DATA_SIZE]);
 
 
 /** 

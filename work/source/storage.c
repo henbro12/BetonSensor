@@ -71,10 +71,10 @@ static ret_code_t fds_garbage_collector()
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data)
+ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data, const uint8_t data_length)
 {    
-    uint8_t m_write_buffer[TC_DATA_SIZE] = {0};
-	memcpy(m_write_buffer, p_write_data, sizeof(m_write_buffer));
+    uint8_t m_write_buffer[MAX_RECORD_SIZE * TC_DATA_SIZE] = {0};
+	memcpy(m_write_buffer, p_write_data, data_length);
 
     fds_record_t        record;
     fds_record_desc_t   record_desc;
@@ -83,7 +83,7 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
     record.file_id              = write_file_id;
     record.key                  = write_record_key;
     record.data.p_data          = &m_write_buffer;
-    record.data.length_words    = sizeof(m_write_buffer)/sizeof(uint8_t);
+    record.data.length_words    = data_length / WORD;
 
     ret_code_t ret = fds_record_write(&record_desc, &record);
     if (ret != FDS_SUCCESS)
@@ -105,7 +105,7 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[TC_DATA_SIZE])
+ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[MAX_RECORD_SIZE * TC_DATA_SIZE])
 {
     fds_flash_record_t  flash_record;
     fds_record_desc_t   record_desc;
@@ -125,9 +125,9 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
             return err_code;
         }
 
-        //NRF_LOG_INFO("Found Record ID = %d", record_desc.record_id);
+        // NRF_LOG_INFO("Found Record ID = %d", record_desc.record_id);
         data = (uint8_t*) flash_record.p_data;
-        for (uint8_t i=0;i<flash_record.p_header->length_words;i++)
+        for (uint8_t i = 0; i < (flash_record.p_header->length_words * WORD); i++)
 		{
 			p_read_data[m_number_of_records][i] = data[i];
 		}
