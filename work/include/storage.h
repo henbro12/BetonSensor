@@ -2,8 +2,8 @@
 #ifndef _storage_H__
 #define _storage_H__
 
-#define RECORD_SIZE 4
-#define MAX_RECORDS 144 ///< 1 dag, elke 10m
+#define TC_DATA_SIZE sizeof(float)      // Size of float (temperature)
+#define MAX_RECORDS 1024                // Equal to FDS_VIRTUAL_PAGES_SIZE
 
 /** 
  * @brief Function for writing to the FDS
@@ -26,7 +26,7 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[RECORD_SIZE]);
+ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[TC_DATA_SIZE]);
 
 
 /** 
@@ -62,6 +62,22 @@ bool fds_getWriteFlag(void);
  * @param[in] fds_write_flag        Boolean indicating the write status
  */
 void fds_setWriteFlag(bool fds_write_flag);
+
+
+/** 
+ * @brief Function for getting all records deleted flag
+ * 
+ * @return      Boolean indicating the flag status
+ */
+bool fds_getAllRecordsDeletedFlag(void);
+
+
+/** 
+ * @brief Function for setting the all records deleted flag
+ * 
+ * @param[in] fds_all_records_deleted_flag        Boolean indicating the flag status
+ */
+void fds_setAllRecordsDeletedFlag(bool fds_all_records_deleted_flag);
 
 
 /** 

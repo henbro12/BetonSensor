@@ -9,12 +9,13 @@
 #include "nrf_log_default_backends.h"
 
 static volatile bool m_fds_write_flag = false; 
+static volatile bool m_fds_all_records_deleted_flag = false;
+
 static volatile uint16_t m_number_of_records = 0;
 
 static volatile uint32_t m_read_file_id = 0;
 static volatile uint32_t m_read_record_key = 0;
 
-static volatile bool m_fds_err_no_space_in_queues = false;
 
 /**
  * @brief   Event handler for the FDS.
@@ -38,11 +39,8 @@ static void fds_evt_handler(fds_evt_t const* p_fds_evt)
             break;
 
         case FDS_EVT_DEL_RECORD:
-            if (m_number_of_records != 0)
-            {
-                fds_find_and_delete(m_read_file_id, m_read_record_key);
-            }
-            m_fds_err_no_space_in_queues = false;
+            // NRF_LOG_INFO("FDS_EVT_DEL_RECORD");
+            fds_find_and_delete(m_read_file_id, m_read_record_key);
             break;
 
         default:
@@ -75,7 +73,7 @@ static ret_code_t fds_garbage_collector()
  */
 ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data)
 {    
-    uint8_t m_write_buffer[RECORD_SIZE] = {0};
+    uint8_t m_write_buffer[TC_DATA_SIZE] = {0};
 	memcpy(m_write_buffer, p_write_data, sizeof(m_write_buffer));
 
     fds_record_t        record;
@@ -107,7 +105,7 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[RECORD_SIZE])
+ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p_read_data)[TC_DATA_SIZE])
 {
     fds_flash_record_t  flash_record;
     fds_record_desc_t   record_desc;
@@ -157,7 +155,6 @@ ret_code_t fds_find_and_delete(uint32_t read_file_id, uint32_t read_record_key)
 {
     m_read_file_id = read_file_id;
     m_read_record_key = read_record_key;
-    m_number_of_records = 0;
 
     ret_code_t err_code = FDS_SUCCESS;
     ret_code_t ret_code;
@@ -168,27 +165,28 @@ ret_code_t fds_find_and_delete(uint32_t read_file_id, uint32_t read_record_key)
     ftok.page   = 0;
     ftok.p_addr = NULL;
 
-    if (m_fds_err_no_space_in_queues)
-    {
-        return FDS_ERR_NO_SPACE_IN_QUEUES;
-    }
-
-    // Loop and find records with same ID and rec key and mark them as deleted
-    while ((ret_code = fds_record_find(read_file_id, read_record_key, &record_desc, &ftok)) == FDS_SUCCESS)
+    // After this function, a FDS_EVT_DEL_RECORD event is triggered
+    // This event will continuously trigger this function and it will find all records with same ID and rec key and mark them as deleted
+    if ((ret_code = fds_record_find(read_file_id, read_record_key, &record_desc, &ftok)) == FDS_SUCCESS)
     {
         err_code = fds_record_delete(&record_desc);
         if (err_code != FDS_SUCCESS)
         {
-            m_fds_err_no_space_in_queues = true;
-            break;
+            // TODO: handle this error properly
+            NRF_LOG_ERROR("FDS_RECORD_DELETE ERROR: %d", err_code);
         }
-        m_number_of_records++;
+        
+        NRF_LOG_INFO("Deleted Record ID: %d", record_desc.record_id);
+        m_fds_all_records_deleted_flag = false;
     }
 
-    if (ret_code == FDS_ERR_NOT_FOUND && m_number_of_records == 0)
+    if (ret_code == FDS_ERR_NOT_FOUND)
     {
+        ret_code = fds_garbage_collector();
         NRF_LOG_INFO("Deleted all records with file id 0x%x and record key 0x%x\r\n", read_file_id, read_record_key);
-        return fds_garbage_collector();
+        
+        m_fds_all_records_deleted_flag = true;
+        return ret_code;
     }
 
     return (err_code != FDS_SUCCESS) ? err_code : NRF_SUCCESS;
@@ -222,7 +220,7 @@ ret_code_t fds_storage_init(void)
 /** 
  * @brief Function for getting the write flag
  * 
- * @return      Boolean indicating the write status
+ * @return      Boolean indicating the flag status
  */
 bool fds_getWriteFlag(void)
 {
@@ -233,11 +231,33 @@ bool fds_getWriteFlag(void)
 /** 
  * @brief Function for setting the write flag
  * 
- * @param[in] fds_write_flag        Boolean indicating the write status
+ * @param[in] fds_write_flag        Boolean indicating the flag status
  */
 void fds_setWriteFlag(bool fds_write_flag)
 {
     m_fds_write_flag = fds_write_flag;
+}
+
+
+/** 
+ * @brief Function for getting all records deleted flag
+ * 
+ * @return      Boolean indicating the flag status
+ */
+bool fds_getAllRecordsDeletedFlag(void)
+{
+    return m_fds_all_records_deleted_flag;
+}
+
+
+/** 
+ * @brief Function for setting the all records deleted flag
+ * 
+ * @param[in] fds_all_records_deleted_flag        Boolean indicating the flag status
+ */
+void fds_setAllRecordsDeletedFlag(bool fds_all_records_deleted_flag)
+{
+    m_fds_all_records_deleted_flag = fds_all_records_deleted_flag;
 }
 
 
