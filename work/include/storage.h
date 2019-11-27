@@ -3,7 +3,9 @@
 #define _storage_H__
 
 #define TC_DATA_SIZE        sizeof(float)   // Size of float (temperature)
-#define MAX_RECORD_SIZE     144             // 1 day, every 10 minutes
+#define MAX_RECORD_SIZE     66              // 1 day, every 10 minutes
+#define MAX_NUMBER_OF_DAYS  4               // Maximum number of days the application will run
+
 #define WORD                4               // Number of bytes in a word
 
 /** 
@@ -15,7 +17,7 @@
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data, const uint8_t data_length);
+ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, uint8_t* p_write_data, uint32_t data_length);
 
 
 /** 

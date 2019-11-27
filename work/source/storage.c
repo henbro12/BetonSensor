@@ -8,6 +8,7 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+
 static volatile bool m_fds_write_flag = false; 
 static volatile bool m_fds_all_records_deleted_flag = false;
 
@@ -71,10 +72,17 @@ static ret_code_t fds_garbage_collector()
  * 
  * @return      NRF_SUCCESS if successful, else error code
  */
-ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const uint8_t* p_write_data, const uint8_t data_length)
+ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, uint8_t* p_write_data, uint32_t data_length)
 {    
     uint8_t m_write_buffer[MAX_RECORD_SIZE * TC_DATA_SIZE] = {0};
 	memcpy(m_write_buffer, p_write_data, data_length);
+
+    // Convert uint8_t array to uint32_t array (bytes > words)
+    static uint32_t m_write_buffer_words[MAX_RECORD_SIZE] = {0};
+    for (int i = 0, j = 0; i < data_length; i+=4, j++)
+    {
+        m_write_buffer_words[j] = (m_write_buffer[i + 0] << 0) | (m_write_buffer[i + 1] << 8) | (m_write_buffer[i + 2] << 16) | (m_write_buffer[i + 3] << 24);
+    }
 
     fds_record_t        record;
     fds_record_desc_t   record_desc;
@@ -82,16 +90,19 @@ ret_code_t fds_write(uint32_t write_file_id, uint32_t write_record_key, const ui
     // Set up record
     record.file_id              = write_file_id;
     record.key                  = write_record_key;
-    record.data.p_data          = &m_write_buffer;
+    record.data.p_data          = &m_write_buffer_words;
     record.data.length_words    = data_length / WORD;
 
     ret_code_t ret = fds_record_write(&record_desc, &record);
     if (ret != FDS_SUCCESS)
     {
+        NRF_LOG_ERROR("ERROR %d: fds_record_write", ret);
         return ret;
     }
 
     NRF_LOG_INFO("Writing Record ID = %d\r\n", record_desc.record_id);
+    m_number_of_records++;
+
     return NRF_SUCCESS;
 }
 
@@ -111,7 +122,7 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
     fds_record_desc_t   record_desc;
     fds_find_token_t    ftok = {0};
 
-    uint8_t*    data;
+    uint32_t*   data;
     uint32_t    err_code;
 
     m_number_of_records = 0;
@@ -122,19 +133,31 @@ ret_code_t fds_read(uint32_t read_file_id, uint32_t read_record_key, uint8_t (*p
         err_code = fds_record_open(&record_desc, &flash_record);
         if (err_code != FDS_SUCCESS)
         {
+            NRF_LOG_ERROR("ERROR %d: fds_record_open", err_code);
             return err_code;
         }
 
         // NRF_LOG_INFO("Found Record ID = %d", record_desc.record_id);
-        data = (uint8_t*) flash_record.p_data;
-        for (uint8_t i = 0; i < (flash_record.p_header->length_words * WORD); i++)
-		{
-			p_read_data[m_number_of_records][i] = data[i];
-		}
+        data = (uint32_t*) flash_record.p_data;
         
+        // Convert uint32_t array to uint8_t array (words -> bytes)
+        static uint8_t m_read_buffer_bytes[MAX_RECORD_SIZE * WORD] = {0};
+        for (int i = 0, j = 0; i < flash_record.p_header->length_words; i++, j+=4)
+        {
+            // NRF_LOG_INFO("Read: 0x%8x", data[i]);
+            m_read_buffer_bytes[j + 0] = (uint8_t)(data[i] >> 0);
+            m_read_buffer_bytes[j + 1] = (uint8_t)(data[i] >> 8);
+            m_read_buffer_bytes[j + 2] = (uint8_t)(data[i] >> 16);
+            m_read_buffer_bytes[j + 3] = (uint8_t)(data[i] >> 24);
+        }
+
+        memcpy(p_read_data[m_number_of_records], m_read_buffer_bytes, flash_record.p_header->length_words * WORD);
+        // NRF_LOG_HEXDUMP_INFO(m_read_buffer_bytes, flash_record.p_header->length_words * WORD);
+
         err_code = fds_record_close(&record_desc);
         if (err_code != FDS_SUCCESS)
         {
+            NRF_LOG_ERROR("ERROR %d: fds_record_close", err_code);
             return err_code;
         }
         m_number_of_records++;
@@ -173,10 +196,10 @@ ret_code_t fds_find_and_delete(uint32_t read_file_id, uint32_t read_record_key)
         if (err_code != FDS_SUCCESS)
         {
             // TODO: handle this error properly
-            NRF_LOG_ERROR("FDS_RECORD_DELETE ERROR: %d", err_code);
+            NRF_LOG_ERROR("ERROR %d: fds_record_delete", err_code);
         }
         
-        NRF_LOG_INFO("Deleted Record ID: %d", record_desc.record_id);
+        // NRF_LOG_INFO("Deleted Record ID: %d", record_desc.record_id);
         m_fds_all_records_deleted_flag = false;
     }
 

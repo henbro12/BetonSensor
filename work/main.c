@@ -98,7 +98,6 @@
 #define DEVICE_NAME_LEN                 strlen(DEVICE_NAME)                     /**< Name length of device. Will define the length of the advertising data. */
 
 #define MANUFACTURER_NAME               "ProwareTechnologies"                   /**< Manufacturer. Will be passed to Device Information Service. */
-#define SERIAL_NUM                      "1234567890"                            /**< Serial Number. Will be passed to Device Information Service. */
 #define HARDWARE_REV                    "1.0"                                   /**< Hardware revision. Will be passed to Device Information Service. */
 #define FIRMAWARE_REV                   "1.0"                                   /**< Firmware revision. Will be passed to Device Information Service. */
 #define SOFTWARE_REV                    "1.0"                                   /**< Software revision. Will be passed to Device Information Service. */
@@ -129,9 +128,6 @@
 
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
-
-#define SIZE_OF_FLOAT   4
-
 #define TC_TIMER_INTERVAL               2000                                    /**< The thermocouple timer interval (in units of ms). */
 #define SPI_INSTANCE    0
 
@@ -148,6 +144,7 @@ BLE_TCS_DEF(m_tcs);
 bool tcs_update_flag = false;
 bool bas_update_flag = false;
 
+bool app_finished_flag = false;
 
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
@@ -159,17 +156,25 @@ static ble_uuid_t m_adv_uuids[] =                                               
     {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}
 };
 
+typedef enum
+{
+    e_cold_junction,
+    e_thermocouple
+} temperature_type;
+
 union
 {
     float float_val;
-    unsigned char bytes_val[SIZE_OF_FLOAT];
+    unsigned char bytes_val[sizeof(float)];
 } floatAsBytes;
 
-uint8_t m_tc_buffer[MAX_RECORD_SIZE * TC_DATA_SIZE] = {0};
-uint8_t m_tc_buffer_ble[(MAX_RECORD_SIZE * TC_DATA_SIZE) * 300] = {0};
 
-uint8_t m_number_of_measurements = 0;
-uint16_t m_total_number_of_measurements = 0;
+static uint8_t m_tc_buffer_local[MAX_RECORD_SIZE * TC_DATA_SIZE] = {0};
+static uint8_t m_tc_buffer_fds[MAX_RECORD_SIZE * TC_DATA_SIZE * MAX_NUMBER_OF_DAYS] = {0};
+
+static uint8_t m_number_of_measurements = 0;
+static uint16_t m_total_number_of_measurements = 0;
+
 
 static void advertising_start(bool erase_bonds);
 
@@ -195,9 +200,9 @@ unsigned char* float2bytes(float m_float)
  * 
  * @return  Float value
  */
-float bytes2float(unsigned char m_bytes[SIZE_OF_FLOAT])
+float bytes2float(unsigned char m_bytes[sizeof(float)])
 {
-    memcpy(floatAsBytes.bytes_val, m_bytes, SIZE_OF_FLOAT);
+    memcpy(floatAsBytes.bytes_val, m_bytes, sizeof(float));
     return floatAsBytes.float_val;
 }
 
@@ -212,7 +217,7 @@ static void write_tc_buffer_too_fds(void)
     if (m_number_of_measurements > 0) 
     {
         NRF_LOG_INFO("Writing thermocouple buffer to FDS...");
-        ret_code = fds_write(FDS_FILE_ID, FDS_REC_KEY, m_tc_buffer, (m_number_of_measurements * TC_DATA_SIZE));
+        ret_code = fds_write(FDS_FILE_ID, FDS_REC_KEY, m_tc_buffer_local, (m_number_of_measurements * TC_DATA_SIZE));
     
         if (ret_code == FDS_ERR_RECORD_TOO_LARGE)
         {
@@ -231,7 +236,7 @@ static void write_tc_buffer_too_fds(void)
         }
 
         m_number_of_measurements = 0;
-        memcpy(m_tc_buffer, 0, sizeof(m_tc_buffer));
+        memcpy(m_tc_buffer_local, 0, sizeof(m_tc_buffer_local));
     }
 }
 
@@ -239,9 +244,8 @@ static void write_tc_buffer_too_fds(void)
 /**
  * @brief Function for handling the MAX31856 timer interrupt
  */
-static void max31856_int_handler(void)
+static void max31856_int_handler(temperature_type type)
 {
-    ret_code_t ret_code;
     bsp_board_led_on(BSP_BOARD_LED_2);
     
     // TODO: Handle error
@@ -250,41 +254,49 @@ static void max31856_int_handler(void)
         max31856_resetFaultStatus();
     }
 
-    float coldJunctionTemperature = 0.0f;
-    unsigned char* coldJunctionTemperatureBytes;
-    
-    if (max31856_getColdJunctionTemperature(&coldJunctionTemperature) == MAX31856_SUCCESS)
+    if (type == e_cold_junction)
     {
-        NRF_LOG_INFO("Measurement: %d", m_total_number_of_measurements + 1);
-        NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(coldJunctionTemperature));
-        coldJunctionTemperatureBytes = float2bytes(coldJunctionTemperature);
-        
-        if (coldJunctionTemperature != 0.0f)
-        {
-            memcpy(&m_tc_buffer[m_number_of_measurements * TC_DATA_SIZE], coldJunctionTemperatureBytes, sizeof(coldJunctionTemperatureBytes));
+        float cold_junction_temperature = 0.0f;
+        unsigned char* cold_junction_temperature_bytes;
 
-            m_number_of_measurements++;
-            m_total_number_of_measurements++;
+        if (max31856_getColdJunctionTemperature(&cold_junction_temperature) == MAX31856_SUCCESS)
+        {
+            NRF_LOG_INFO("Measurement: %d", m_number_of_measurements + 1);
+            NRF_LOG_INFO("Cold Junction Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(cold_junction_temperature));
+            cold_junction_temperature_bytes = float2bytes(cold_junction_temperature);
+
+            if (cold_junction_temperature != 0.0f)
+            {
+                memcpy(&m_tc_buffer_local[m_number_of_measurements * TC_DATA_SIZE], cold_junction_temperature_bytes, sizeof(cold_junction_temperature_bytes));
+                
+                m_number_of_measurements++;
+                m_total_number_of_measurements++;
+            }
         }
     }
+    else if (type == e_thermocouple)
+    {
+        float thermocouple_temperature = 0.0f;
+        unsigned char* thermocouple_temperature_tytes;
 
-    // nrf_delay_ms(100);
+        if (max31856_getThermoCoupleTemperature(&thermocouple_temperature) == MAX31856_SUCCESS)
+        {
+            NRF_LOG_INFO("Measurement: %d", m_number_of_measurements + 1);
+            NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocouple_temperature));
+            thermocouple_temperature_tytes = float2bytes(thermocouple_temperature);
 
-    // float thermocoupleTemperature = 0.0f;
-    // unsigned char* thermocoupleTemperatureBytes;
+            if (thermocouple_temperature != 0.0f) {
+                memcpy(&m_tc_buffer_local[m_number_of_measurements * TC_DATA_SIZE], thermocouple_temperature_tytes, sizeof(thermocouple_temperature_tytes));
 
-    // if (max31856_getThermoCoupleTemperature(&thermocoupleTemperature) == MAX31856_SUCCESS)
-    // {
-    //     NRF_LOG_INFO("Thermocouple Temperature: " NRF_LOG_FLOAT_MARKER "°C\r\n", NRF_LOG_FLOAT(thermocoupleTemperature));
-    //     thermocoupleTemperatureBytes = float2bytes(thermocoupleTemperature);
-
-    //     // if (thermocoupleTemperature != 0.0f) {
-    //     //     APP_ERROR_CHECK(fds_write(FILE_ID_FDS, REC_KEY_FDS, thermocoupleTemperatureBytes));
-    //     //     while (!fds_getWriteFlag());
-    //     // }
-    // }
-
-    // nrf_delay_ms(100);
+                m_number_of_measurements++;
+                m_total_number_of_measurements++;
+            }
+        }
+    }
+    else
+    {
+        NRF_LOG_ERROR("ERROR: UNKNOWN TEMPERATURE TYPE");
+    }
 
     bsp_board_led_off(BSP_BOARD_LED_2);
 } 
@@ -297,29 +309,28 @@ static void max31856_int_handler(void)
  */
 void read_records() 
 {
-    static uint8_t read_data[30][MAX_RECORD_SIZE * TC_DATA_SIZE] = {0};
+    static uint8_t read_data[MAX_NUMBER_OF_DAYS][MAX_RECORD_SIZE * TC_DATA_SIZE] = {0};
     APP_ERROR_CHECK(fds_read(FDS_FILE_ID, FDS_REC_KEY, read_data));
 
-    NRF_LOG_INFO("Number of records: %d", fds_getNumberOfRecords());
     NRF_LOG_INFO("Total number of measurements: %d", m_total_number_of_measurements);
+    NRF_LOG_INFO("Total number of records: %d", fds_getNumberOfRecords());
 
     int k = 0;
     for (int i = 0; i < fds_getNumberOfRecords(); i++)
     {
         for (int j = 0; j < MAX_RECORD_SIZE * TC_DATA_SIZE; j++)
         {
-            if (read_data[i][j] != 0x00 || read_data[i][j + 1] != 0x00 || read_data[i][j + 2] != 0x00 || read_data[i][j + 3] != 0x00) {
-                m_tc_buffer_ble[k] = read_data[i][j];
-                k++;
-            }
-            else
-            {
-                j += 4;
-            }
-            
+            m_tc_buffer_fds[k] = read_data[i][j];
+            k++;
+
+            // if (j % 4 == 0)
+            // {
+            //     float cold_junction_temperature = bytes2float(read_data[i]);
+            //     NRF_LOG_INFO("Measurement %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i+1, NRF_LOG_FLOAT(cold_junction_temperature));
+            // }
         }
     }
-    //NRF_LOG_HEXDUMP_INFO(m_tc_buffer_ble, m_total_number_of_measurements * TC_DATA_SIZE);
+    // NRF_LOG_HEXDUMP_INFO(m_tc_buffer_fds, m_total_number_of_measurements * TC_DATA_SIZE);
     NRF_LOG_INFO("\t*** END OF RECORDS ***\r\n");
 }
 
@@ -456,18 +467,21 @@ static void thermocouple_level_update(void)
     NRF_LOG_INFO("Reading thermocouple data log from FDS...")
     read_records();
 
-    //uint16_t numberOfRecords = fds_getNumberOfRecords();
-    uint32_t numberOfBytes = m_total_number_of_measurements * TC_DATA_SIZE;
-    uint8_t endBytes[TC_DATA_SIZE] = { 0xFF, 0xFF, 0xFF, 0xFF };
+    uint8_t end_bytes[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 
-    uint8_t* p_tc_buffer = malloc(numberOfBytes + sizeof(endBytes));
-    memcpy(p_tc_buffer, m_tc_buffer_ble, numberOfBytes);
-    memcpy(&p_tc_buffer[numberOfBytes], endBytes, sizeof(endBytes));
+    uint16_t number_of_records      = fds_getNumberOfRecords();
+    uint32_t tc_buffer_fds_length   = number_of_records * MAX_RECORD_SIZE * TC_DATA_SIZE;
+    uint16_t tc_buffer_local_length = m_number_of_measurements * TC_DATA_SIZE;
+    uint32_t total_number_of_bytes  = tc_buffer_fds_length + tc_buffer_local_length + sizeof(end_bytes);
 
+    uint8_t* p_tc_buffer = malloc(total_number_of_bytes);
+    memcpy(p_tc_buffer, m_tc_buffer_fds, tc_buffer_fds_length);
+    memcpy(&p_tc_buffer[tc_buffer_fds_length], m_tc_buffer_local, tc_buffer_local_length);
+    memcpy(&p_tc_buffer[tc_buffer_fds_length + tc_buffer_local_length], end_bytes, sizeof(end_bytes));
 
     NRF_LOG_INFO("Sending Thermocouple data...");
 
-    err_code = ble_tcs_thermocouple_level_update(&m_tcs, p_tc_buffer, (numberOfBytes + sizeof(endBytes)));
+    err_code = ble_tcs_thermocouple_level_update(&m_tcs, p_tc_buffer, total_number_of_bytes);
     if ((err_code != NRF_SUCCESS) &&
         (err_code != NRF_ERROR_INVALID_STATE) &&
         (err_code != NRF_ERROR_RESOURCES) &&
@@ -475,7 +489,9 @@ static void thermocouple_level_update(void)
         (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
     {
         APP_ERROR_HANDLER(err_code);
-    }    
+    }
+
+    free(p_tc_buffer);
 }
 
 
@@ -568,7 +584,7 @@ static void services_init(void)
     memset(&dis_init, 0, (sizeof(dis_init)));
 
     ble_srv_ascii_to_utf8(&dis_init.manufact_name_str, (char*)MANUFACTURER_NAME);
-    ble_srv_ascii_to_utf8(&dis_init.serial_num_str, (char*)SERIAL_NUM);
+    //ble_srv_ascii_to_utf8(&dis_init.serial_num_str, (char*)SERIAL_NUM);
     ble_srv_ascii_to_utf8(&dis_init.hw_rev_str, (char*)HARDWARE_REV);
     ble_srv_ascii_to_utf8(&dis_init.fw_rev_str, (char*)FIRMAWARE_REV);
     ble_srv_ascii_to_utf8(&dis_init.sw_rev_str, (char*)SOFTWARE_REV);
@@ -949,7 +965,7 @@ int main(void)
     advertising_start(erase_bonds);
     //sleep_mode_enter();
 
-    NRF_LOG_INFO("\r\n\n\n\t*** STARTING APPLICATION ***\r\n")
+    NRF_LOG_INFO("\r\n\n\n\t*** STARTING APPLICATION ***\r\n");
     NRF_LOG_INFO("Running application with Thermocouple timer interval of %dms\r\n", TC_TIMER_INTERVAL);
     NRF_LOG_FLUSH();
 
@@ -967,21 +983,28 @@ int main(void)
 
             if (tcs_update_flag)
             {
-                write_tc_buffer_too_fds();
                 thermocouple_level_update();
                 tcs_update_flag = false;
             }
         }
 
-        if (timer_getIntFlag())
+        if (fds_getNumberOfRecords() < MAX_NUMBER_OF_DAYS)
         {
-            max31856_int_handler();
-            timer_setIntFlag(false);
-        }
+            if (timer_getIntFlag())
+            {
+                max31856_int_handler(e_cold_junction);
+                timer_setIntFlag(false);
+            }
 
-        if (m_number_of_measurements >= MAX_RECORD_SIZE)
+            if (m_number_of_measurements >= MAX_RECORD_SIZE)
+            {
+                write_tc_buffer_too_fds();
+            }
+        }
+        else if (!app_finished_flag)
         {
-            write_tc_buffer_too_fds();
+            NRF_LOG_INFO("\r\n\n\n\t*** APPLICATION FINISHED ***\r\n");
+            app_finished_flag = true;
         }
     }
 }
