@@ -108,4 +108,36 @@ void ble_tcs_on_ble_evt(ble_evt_t const* p_ble_evt, void* p_context);
 ret_code_t ble_tcs_thermocouple_level_update(ble_tcs_t* p_tcs, uint8_t* p_tc_data, uint16_t tc_data_length);
 
 
+/** 
+ * @brief Function for getting the activated flag
+ * 
+ * @return      Boolean indicating the flag status
+ */
+bool ble_tcs_getActivatedFlag(void);
+
+
+/** 
+ * @brief Function for setting the activated flag
+ * 
+ * @param[in]      Boolean indicating the flag status
+ */
+void ble_tcs_setActivatedFlag(bool tcs_activated_flag);
+
+
+/** 
+ * @brief Function for getting the timer interval
+ * 
+ * @return      Uint32_t representing the timer interval
+ */
+uint32_t ble_tcs_getTimerInterval(void);
+
+
+/** 
+ * @brief Function for setting the timer interval
+ * 
+ * @param[in]      Uint32_t representing the timer interval
+ */
+void ble_tcs_setTimerInterval(uint32_t tcs_timer_interval);
+
+
 #endif // _BLE_TCS_H__

@@ -128,11 +128,12 @@
 
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
-#define TC_TIMER_INTERVAL               2000                                    /**< The thermocouple timer interval (in units of ms). */
 #define SPI_INSTANCE    0
 
 #define FDS_FILE_ID     0x3185
 #define FDS_REC_KEY     0x0001
+
+#define BLE_TX_POWER    8
 
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
@@ -144,7 +145,8 @@ BLE_TCS_DEF(m_tcs);
 bool tcs_update_flag = false;
 bool bas_update_flag = false;
 
-bool app_finished_flag = false;
+bool m_app_finished_flag = false;
+bool m_app_activated_flag = false;
 
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
@@ -323,14 +325,14 @@ void read_records()
             m_tc_buffer_fds[k] = read_data[i][j];
             k++;
 
-            // if (j % 4 == 0)
+            // if (k % 4 == 0)
             // {
             //     float cold_junction_temperature = bytes2float(read_data[i]);
             //     NRF_LOG_INFO("Measurement %d, temperature: " NRF_LOG_FLOAT_MARKER "°C", i+1, NRF_LOG_FLOAT(cold_junction_temperature));
             // }
         }
     }
-    // NRF_LOG_HEXDUMP_INFO(m_tc_buffer_fds, m_total_number_of_measurements * TC_DATA_SIZE);
+    //NRF_LOG_HEXDUMP_INFO(m_tc_buffer_fds, m_total_number_of_measurements * TC_DATA_SIZE);
     NRF_LOG_INFO("\t*** END OF RECORDS ***\r\n");
 }
 
@@ -539,7 +541,7 @@ static void services_init(void)
 {
     ret_code_t              err_code;
     nrf_ble_qwr_init_t      qwr_init         = {0};
-    ble_tcs_init_t          tcs_init  = {0};
+    ble_tcs_init_t          tcs_init         = {0};
     ble_dis_init_t          dis_init         = {0};
     ble_bas_init_t          bas_init         = {0};
 
@@ -699,6 +701,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
 
+            err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_CONN, m_conn_handle, BLE_TX_POWER);
+            APP_ERROR_CHECK(err_code);
+            
             bas_update_flag = true;
             break;
 
@@ -868,7 +873,7 @@ static void log_init(void)
 
 /**@brief Function for setting the application in sleep mode.
  */
-void power_manage( void )
+static void power_manage( void )
 {
     ret_code_t err_code = sd_app_evt_wait();
     APP_ERROR_CHECK(err_code);
@@ -881,6 +886,16 @@ static void power_management_init(void)
 {
     ret_code_t err_code;
     err_code = nrf_pwr_mgmt_init();
+    APP_ERROR_CHECK(err_code);
+}
+
+static void tx_power_init(void)
+{
+    ret_code_t err_code;
+    err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, BLE_TX_POWER);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_SCAN_INIT, BLE_CONN_HANDLE_INVALID, BLE_TX_POWER);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -949,6 +964,7 @@ int main(void)
     gatt_init();
     services_init();
     advertising_init();
+    tx_power_init();
     conn_params_init();
     peer_manager_init();
 
@@ -960,51 +976,68 @@ int main(void)
     fds_find_and_delete(FDS_FILE_ID, FDS_REC_KEY);
     while(!fds_getAllRecordsDeletedFlag());
 
-    timer_start(TC_TIMER_INTERVAL);
-
+    //sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, );
     advertising_start(erase_bonds);
     //sleep_mode_enter();
 
-    NRF_LOG_INFO("\r\n\n\n\t*** STARTING APPLICATION ***\r\n");
-    NRF_LOG_INFO("Running application with Thermocouple timer interval of %dms\r\n", TC_TIMER_INTERVAL);
     NRF_LOG_FLUSH();
 
     while (true)
     {
         idle_state_handle();
 
-        if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+        if (ble_tcs_getActivatedFlag())
         {
-            if (bas_update_flag)
+            const uint32_t timer_interval = ble_tcs_getTimerInterval(); 
+            if (timer_interval != 0)
             {
-                battery_level_update();
-                bas_update_flag = false;
-            }
+                ble_tcs_setActivatedFlag(false);
+                m_app_activated_flag = true;
 
-            if (tcs_update_flag)
-            {
-                thermocouple_level_update();
-                tcs_update_flag = false;
-            }
-        }
+                NRF_LOG_INFO("\r\n\n\n\t*** STARTING APPLICATION ***\r\n");
+                NRF_LOG_INFO("Running application with Thermocouple timer interval of %dms\r\n", timer_interval);
 
-        if (fds_getNumberOfRecords() < MAX_NUMBER_OF_DAYS)
-        {
-            if (timer_getIntFlag())
-            {
+                timer_start(timer_interval * 1000);
                 max31856_int_handler(e_cold_junction);
-                timer_setIntFlag(false);
-            }
-
-            if (m_number_of_measurements >= MAX_RECORD_SIZE)
-            {
-                write_tc_buffer_too_fds();
             }
         }
-        else if (!app_finished_flag)
+
+
+        if (m_app_activated_flag)
         {
-            NRF_LOG_INFO("\r\n\n\n\t*** APPLICATION FINISHED ***\r\n");
-            app_finished_flag = true;
+            if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+            {
+                if (bas_update_flag)
+                {
+                    battery_level_update();
+                    bas_update_flag = false;
+                }
+
+                if (tcs_update_flag)
+                {
+                    thermocouple_level_update();
+                    tcs_update_flag = false;
+                }
+            }
+
+            if (fds_getNumberOfRecords() < MAX_NUMBER_OF_DAYS)
+            {
+                if (timer_getIntFlag())
+                {
+                    max31856_int_handler(e_cold_junction);
+                    timer_setIntFlag(false);
+                }
+
+                if (m_number_of_measurements >= MAX_RECORD_SIZE)
+                {
+                    write_tc_buffer_too_fds();
+                }
+            }
+            else if (!m_app_finished_flag)
+            {
+                NRF_LOG_INFO("\r\n\n\n\t*** APPLICATION FINISHED ***\r\n");
+                m_app_finished_flag = true;
+            }
         }
     }
 }

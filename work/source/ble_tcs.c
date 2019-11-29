@@ -16,6 +16,8 @@ volatile uint32_t m_tc_data_size = 0;
 volatile uint32_t m_tc_data_pos = 0;
 uint8_t* m_tc_data;
 
+static volatile bool m_tcs_activated_flag = false;
+static volatile uint32_t m_tcs_timer_interval = 0;
 
 /**@brief Function for updating the Thermocouple value per packet.
  *
@@ -221,13 +223,23 @@ static void on_write(ble_tcs_t* p_tcs, ble_evt_t const* p_ble_evt)
 
     if (p_evt_write->handle == p_tcs->char_handles.value_handle)
     {
-        if (*p_evt_write->data == 0x30)
-        {
-            nrf_gpio_pin_clear(LED_3);
+        char receivedString[p_evt_write->len + 1];
+        for (int i = 0; i < p_evt_write->len; i++) {
+            receivedString[i] = p_evt_write->data[i];
         }
-        else if (*p_evt_write->data == 0x31)
+        receivedString[p_evt_write->len] = '\0';
+
+        if (strcmp(receivedString, "Activate") == 0)
         {
-            nrf_gpio_pin_set(LED_3);
+            m_tcs_activated_flag = true;
+        }
+        
+        if (strstr(receivedString, "TimerInterval") != NULL)
+        {            
+            char delim[] = "=";
+            char *timer_interval = strtok(receivedString, delim);
+            timer_interval = strtok(NULL, delim);
+            sscanf(timer_interval, "%ld", &m_tcs_timer_interval);
         }
     }
 
@@ -392,4 +404,48 @@ ret_code_t ble_tcs_init(ble_tcs_t* p_tcs, const ble_tcs_init_t* p_tcs_init)
 
     // Add tc characteristic
     return tc_char_add(p_tcs, p_tcs_init);
+}
+
+
+/** 
+ * @brief Function for getting the activated flag
+ * 
+ * @return      Boolean indicating the flag status
+ */
+bool ble_tcs_getActivatedFlag(void)
+{
+    return m_tcs_activated_flag;
+}
+
+
+/** 
+ * @brief Function for setting the activated flag
+ * 
+ * @param[in]      Boolean indicating the flag status
+ */
+void ble_tcs_setActivatedFlag(bool tcs_activated_flag)
+{
+    m_tcs_activated_flag = tcs_activated_flag;
+}
+
+
+/** 
+ * @brief Function for getting the timer interval
+ * 
+ * @return      Uint32_t representing the timer interval
+ */
+uint32_t ble_tcs_getTimerInterval(void)
+{
+    return m_tcs_timer_interval;
+}
+
+
+/** 
+ * @brief Function for setting the timer interval
+ * 
+ * @param[in]      Uint32_t representing the timer interval
+ */
+void ble_tcs_setTimerInterval(uint32_t tcs_timer_interval)
+{
+    m_tcs_timer_interval = tcs_timer_interval;
 }

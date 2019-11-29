@@ -3,8 +3,8 @@
 #define _storage_H__
 
 #define TC_DATA_SIZE        sizeof(float)   // Size of float (temperature)
-#define MAX_RECORD_SIZE     66              // 1 day, every 10 minutes
-#define MAX_NUMBER_OF_DAYS  4               // Maximum number of days the application will run
+#define MAX_RECORD_SIZE     144             // 1 day, every 10 minutes
+#define MAX_NUMBER_OF_DAYS  30              // Maximum number of days the application will run
 
 #define WORD                4               // Number of bytes in a word
 
