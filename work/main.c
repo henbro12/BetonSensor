@@ -871,14 +871,6 @@ static void log_init(void)
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-/**@brief Function for setting the application in sleep mode.
- */
-static void power_manage( void )
-{
-    ret_code_t err_code = sd_app_evt_wait();
-    APP_ERROR_CHECK(err_code);
-}
-
 
 /**@brief Function for initializing power management.
  */
@@ -889,6 +881,9 @@ static void power_management_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
+
+/**@brief Function for initializing the TX power level.
+ */
 static void tx_power_init(void)
 {
     ret_code_t err_code;
@@ -896,6 +891,16 @@ static void tx_power_init(void)
     APP_ERROR_CHECK(err_code);
 
     err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_SCAN_INIT, BLE_CONN_HANDLE_INVALID, BLE_TX_POWER);
+    APP_ERROR_CHECK(err_code);
+}
+
+
+/**@brief Function for initializing the DCDC switching regulator.
+ */
+static void dcdc_init(void)
+{
+    ret_code_t err_code;
+    err_code = sd_power_dcdc_mode_set(NRF_POWER_DCDC_ENABLE);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -908,7 +913,6 @@ static void idle_state_handle(void)
 {
     if (NRF_LOG_PROCESS() == false)
     {
-        //power_manage();
         nrf_pwr_mgmt_run();
     }
 }
@@ -965,6 +969,7 @@ int main(void)
     services_init();
     advertising_init();
     tx_power_init();
+    dcdc_init();
     conn_params_init();
     peer_manager_init();
 
